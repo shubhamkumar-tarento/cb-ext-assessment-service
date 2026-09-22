@@ -1,16 +1,20 @@
 package com.igot.cb.config;
 
 import com.igot.cb.common.util.CbExtAssessmentServerProperties;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+import java.time.Duration;
+
 @Configuration
 public class RedisConfig {
-    @Autowired
-    CbExtAssessmentServerProperties cbExtAssessmentServerProperties;
+    final CbExtAssessmentServerProperties cbExtAssessmentServerProperties;
+
+    public RedisConfig(CbExtAssessmentServerProperties cbExtAssessmentServerProperties) {
+        this.cbExtAssessmentServerProperties = cbExtAssessmentServerProperties;
+    }
 
     @Bean
     public JedisPool jedisPool() {
@@ -31,8 +35,8 @@ public class RedisConfig {
         poolConfig.setTestOnBorrow(cbExtAssessmentServerProperties.isTestOnBorrow());
         poolConfig.setTestOnReturn(cbExtAssessmentServerProperties.isTestOnReturn());
         poolConfig.setTestWhileIdle(cbExtAssessmentServerProperties.isTestWhileIdle());
-        poolConfig.setMinEvictableIdleTimeMillis(cbExtAssessmentServerProperties.getMinEvictableIdleTime());
-        poolConfig.setTimeBetweenEvictionRunsMillis(cbExtAssessmentServerProperties.getTimeBetweenEvictionRuns());
+        poolConfig.setMinEvictableIdleDuration(Duration.ofMillis(cbExtAssessmentServerProperties.getMinEvictableIdleTime()));
+        poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(cbExtAssessmentServerProperties.getTimeBetweenEvictionRuns()));
         poolConfig.setNumTestsPerEvictionRun(cbExtAssessmentServerProperties.getNumTestsPerEvictionRun());
         poolConfig.setBlockWhenExhausted(cbExtAssessmentServerProperties.isBlockWhenExhausted());
         return poolConfig;

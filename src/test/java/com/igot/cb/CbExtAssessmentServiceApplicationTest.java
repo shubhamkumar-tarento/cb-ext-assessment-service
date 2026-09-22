@@ -79,15 +79,5 @@ class CbExtAssessmentServiceApplicationTest {
         }
     }
 
-    // Helper to access private fields
-    private Object getField(Object obj, String fieldName) {
-        try {
-            Field field = obj.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field.get(obj);
-        } catch (Exception e) {
-            return null;
-        }
-    }
 }
 

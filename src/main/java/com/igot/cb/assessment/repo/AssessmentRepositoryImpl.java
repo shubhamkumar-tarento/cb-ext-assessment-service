@@ -9,9 +9,9 @@ import com.igot.cb.common.util.Constants;
 import com.igot.cb.common.util.InstantTypeAdapter;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
@@ -23,17 +23,20 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
     public static final String SOURCE_ID = "sourceId";
     public static final String USER_ID = "userId";
 
-    @Autowired
     CassandraOperation cassandraOperation;
 
-    @Autowired
     UserAssessmentSummaryRepository userAssessmentSummaryRepo;
 
-    @Autowired
     UserAssessmentMasterRepository userAssessmentMasterRepo;
 
-    @Autowired
     UserQuizMasterRepository userQuizMasterRepo;
+
+    public AssessmentRepositoryImpl(CassandraOperation cassandraOperation, UserAssessmentSummaryRepository userAssessmentSummaryRepo, UserAssessmentMasterRepository userAssessmentMasterRepo, UserQuizMasterRepository userQuizMasterRepo) {
+        this.cassandraOperation = cassandraOperation;
+        this.userAssessmentSummaryRepo = userAssessmentSummaryRepo;
+        this.userAssessmentMasterRepo = userAssessmentMasterRepo;
+        this.userQuizMasterRepo = userQuizMasterRepo;
+    }
 
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -52,9 +55,8 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
         request.put(Constants.STATUS, status);
         SBApiResponse resp = cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
                 Constants.TABLE_USER_ASSESSMENT_DATA, request);
-        Object responseVal = MapUtils.isEmpty(resp == null ? null : resp.getResult())
-                ? null
-                : resp.getResult().get("STATUS");
+        Map<String, Object> result = (resp == null) ? null : resp.getResult();
+        Object responseVal = MapUtils.isEmpty(result) ? null : result.get("STATUS");
         return Constants.SUCCESS.equalsIgnoreCase(Objects.toString(responseVal, null));
     }
 
@@ -80,12 +82,9 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
         if (MapUtils.isNotEmpty(saveSubmitAssessmentRequest)) {
             fieldsToBeUpdated.put("savepointsubmitreq", new Gson().toJson(saveSubmitAssessmentRequest));
         }
-        if (submitAssessmentRequest.get(Constants.LANGUAGE) instanceof String &&
-                StringUtils.isNotBlank((String) submitAssessmentRequest.get(Constants.LANGUAGE))) {
-            fieldsToBeUpdated.put(
-                    Constants.LANGUAGE,
-                    ((String) submitAssessmentRequest.get(Constants.LANGUAGE)).toLowerCase()
-            );
+        if (submitAssessmentRequest.get(Constants.LANGUAGE) instanceof String language &&
+                StringUtils.isNotBlank(language)) {
+            fieldsToBeUpdated.put(Constants.LANGUAGE, language.toLowerCase());
         }
         cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_ASSESSMENT_DATA,
                 fieldsToBeUpdated, compositeKeys);
@@ -94,21 +93,26 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
 
     @Override
     public Map<String, Object> insertQuizOrAssessment(Map<String, Object> persist, Boolean isAssessment)
-            throws Exception {
+            throws ParseException {
         Map<String, Object> response = new HashMap<>();
         Date date = new Date();
 
         // insert assessment and assessment summary
         if (Boolean.TRUE.equals(isAssessment)) {
-            UserAssessmentMasterModel assessment = new UserAssessmentMasterModel(
-                    new UserAssessmentMasterPrimaryKeyModel(persist.get(ROOT_ORG).toString(), date,
+            UserAssessmentMasterModel assessment = UserAssessmentMasterModel.builder()
+                    .primaryKey(new UserAssessmentMasterPrimaryKeyModel(persist.get(ROOT_ORG).toString(), date,
                             persist.get("parent").toString(), BigDecimal.valueOf((Double) persist.get(RESULT)),
-                            UuidCreator.getTimeBased()),
-                    Integer.parseInt(persist.get("correct").toString()), formatter.parse(formatter.format(date)),
-                    Integer.parseInt(persist.get("incorrect").toString()),
-                    Integer.parseInt(persist.get("blank").toString()), persist.get("parentContentType").toString(),
-                    new BigDecimal(60), persist.get(SOURCE_ID).toString(), persist.get("title").toString(),
-                    persist.get(USER_ID).toString());
+                            UuidCreator.getTimeBased()))
+                    .correctCount(Integer.parseInt(persist.get("correct").toString()))
+                    .dateCreated(formatter.parse(formatter.format(date)))
+                    .incorrectCount(Integer.parseInt(persist.get("incorrect").toString()))
+                    .notAnsweredCount(Integer.parseInt(persist.get("blank").toString()))
+                    .parentContentType(persist.get("parentContentType").toString())
+                    .passPercent(new BigDecimal(60))
+                    .sourceId(persist.get(SOURCE_ID).toString())
+                    .sourceTitle(persist.get("title").toString())
+                    .userId(persist.get(USER_ID).toString())
+                    .build();
             UserAssessmentSummaryModel summary = new UserAssessmentSummaryModel();
             UserAssessmentSummaryModel data = userAssessmentSummaryRepo
                     .findById(new UserAssessmentSummaryPrimaryKeyModel(persist.get(ROOT_ORG).toString(),
@@ -143,14 +147,18 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
         }
         // insert quiz and quiz summary
         else {
-            UserQuizMasterModel quiz = new UserQuizMasterModel(
-                    new UserQuizMasterPrimaryKeyModel(persist.get(ROOT_ORG).toString(), date,
-                            BigDecimal.valueOf((Double) persist.get(RESULT)), UuidCreator.getTimeBased()),
-                    Integer.parseInt(persist.get("correct").toString()), formatter.parse(formatter.format(date)),
-                    Integer.parseInt(persist.get("incorrect").toString()),
-                    Integer.parseInt(persist.get("blank").toString()), new BigDecimal(60),
-                    persist.get(SOURCE_ID).toString(), persist.get("title").toString(),
-                    persist.get(USER_ID).toString());
+            UserQuizMasterModel quiz = UserQuizMasterModel.builder()
+                    .primaryKey(new UserQuizMasterPrimaryKeyModel(persist.get(ROOT_ORG).toString(), date,
+                            BigDecimal.valueOf((Double) persist.get(RESULT)), UuidCreator.getTimeBased()))
+                    .correctCount(Integer.parseInt(persist.get("correct").toString()))
+                    .dateCreated(formatter.parse(formatter.format(date)))
+                    .incorrectCount(Integer.parseInt(persist.get("incorrect").toString()))
+                    .notAnsweredCount(Integer.parseInt(persist.get("blank").toString()))
+                    .passPercent(new BigDecimal(60))
+                    .sourceId(persist.get(SOURCE_ID).toString())
+                    .sourceTitle(persist.get("title").toString())
+                    .userId(persist.get(USER_ID).toString())
+                    .build();
             UserQuizSummaryModel summary = new UserQuizSummaryModel(
                     new UserQuizSummaryPrimaryKeyModel(persist.get(ROOT_ORG).toString(),
                             persist.get(USER_ID).toString(), persist.get(SOURCE_ID).toString()),
@@ -164,9 +172,7 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
     }
 
     @Override
-    public List<Map<String, Object>> getAssessmentbyContentUser(String rootOrg, String courseId, String userId)
-            throws Exception {
-        // TODO Auto-generated method stub
+    public List<Map<String, Object>> getAssessmentbyContentUser(String rootOrg, String courseId, String userId) {
         return Collections.emptyList();
     }
 
@@ -175,9 +181,8 @@ public class AssessmentRepositoryImpl implements AssessmentRepository {
         Map<String, Object> request = new HashMap<>();
         request.put(Constants.USER_ID, userId);
         request.put(Constants.ASSESSMENT_ID_KEY, assessmentIdentifier);
-        List<Map<String, Object>> existingDataList = cassandraOperation.getRecordsByProperties(
+        return cassandraOperation.getRecordsByProperties(
                 Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_ASSESSMENT_DATA, request, null);
-        return existingDataList;
     }
 
 }

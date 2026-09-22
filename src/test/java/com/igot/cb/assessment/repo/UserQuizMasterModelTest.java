@@ -46,9 +46,17 @@ class UserQuizMasterModelTest {
         BigDecimal passPercent = new BigDecimal("80.0");
         String sourceId = "src2", sourceTitle = "Another Quiz", userId = "user2";
 
-        UserQuizMasterModel model = new UserQuizMasterModel(
-                pk, correct, date, incorrect, notAnswered, passPercent, sourceId, sourceTitle, userId
-        );
+        UserQuizMasterModel model = UserQuizMasterModel.builder()
+                .primaryKey(pk)
+                .correctCount(correct)
+                .dateCreated(date)
+                .incorrectCount(incorrect)
+                .notAnsweredCount(notAnswered)
+                .passPercent(passPercent)
+                .sourceId(sourceId)
+                .sourceTitle(sourceTitle)
+                .userId(userId)
+                .build();
 
         assertEquals(pk, model.getPrimaryKey());
         assertEquals(correct, model.getCorrectCount());

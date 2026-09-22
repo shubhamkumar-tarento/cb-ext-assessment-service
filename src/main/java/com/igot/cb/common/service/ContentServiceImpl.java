@@ -12,7 +12,6 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
@@ -27,16 +26,21 @@ public class ContentServiceImpl implements ContentService{
 
     private Logger logger = LoggerFactory.getLogger(ContentServiceImpl.class);
 
-    @Autowired
-    private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
-    @Autowired
-    CbExtAssessmentServerProperties serverConfig;
+    private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
 
-    @Autowired
-    RedisCacheMgr redisCacheMgr;
+    final CbExtAssessmentServerProperties serverConfig;
 
-    @Autowired
-    DataCacheMgr dataCacheMgr;
+    final RedisCacheMgr redisCacheMgr;
+
+    final DataCacheMgr dataCacheMgr;
+
+    public ContentServiceImpl(OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
+            CbExtAssessmentServerProperties serverConfig, RedisCacheMgr redisCacheMgr, DataCacheMgr dataCacheMgr) {
+        this.outboundRequestHandlerService = outboundRequestHandlerService;
+        this.serverConfig = serverConfig;
+        this.redisCacheMgr = redisCacheMgr;
+        this.dataCacheMgr = dataCacheMgr;
+    }
 
     @Override
     public String getContentType(String resourceId) {
@@ -103,11 +107,15 @@ public class ContentServiceImpl implements ContentService{
 
             if ("OK".equals(apiResponse.get("responseCode"))) {
                 response = Constants.SUCCESS;
-                logger.info(String.format("Successfully updated progress for user : %s, for assessment : %s, of course :%s", userId,
-                        reqBody.get(Constants.IDENTIFIER),reqBody.get(Constants.COURSE_ID)));
+                if (logger.isInfoEnabled()) {
+                    logger.info("Successfully updated progress for user : {}, for assessment : {}, of course :{}", userId,
+                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
+                }
             } else {
-                logger.info(String.format("Failed to update progress for user : %s, for assessment : %s, of course :%s", userId,
-                        reqBody.get(Constants.IDENTIFIER),reqBody.get(Constants.COURSE_ID)));
+                if (logger.isInfoEnabled()) {
+                    logger.info("Failed to update progress for user : {}, for assessment : {}, of course :{}", userId,
+                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
+                }
                 outgoingResponse.setResult(null);
                 updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
             }
@@ -133,7 +141,7 @@ public class ContentServiceImpl implements ContentService{
                 .append("?hierarchyType=detail");
         Map<String, Object> response = (Map<String, Object>) outboundRequestHandlerService.fetchResult(url.toString());
         if (ObjectUtils.isEmpty(response)) {
-            return Collections.EMPTY_MAP;
+            return Collections.emptyMap();
         }
 
         return response;
@@ -157,7 +165,7 @@ public class ContentServiceImpl implements ContentService{
                 responseData = readContent(contentId, fields);
             } else {
                 try {
-                    responseData = new HashMap<String, Object>();
+                    responseData = new HashMap<>();
                     Map<String, Object> contentData = mapper.readValue(contentString,
                             new TypeReference<Map<String, Object>>() {
                             });
@@ -217,11 +225,15 @@ public class ContentServiceImpl implements ContentService{
 
             if ("OK".equals(apiResponse.get("responseCode"))) {
                 response = Constants.SUCCESS;
-                logger.info(String.format("Successfully updated progress for user : %s, for assessment : %s", userId,
-                        reqBody.get(Constants.IDENTIFIER)));
+                if (logger.isInfoEnabled()) {
+                    logger.info("Successfully updated progress for user : {}, for assessment : {}", userId,
+                            reqBody.get(Constants.IDENTIFIER));
+                }
             } else {
-                logger.info(String.format("Failed to update progress for user : %s, for assessment : %s, of course :%s", userId,
-                        reqBody.get(Constants.IDENTIFIER),reqBody.get(Constants.COURSE_ID)));
+                if (logger.isInfoEnabled()) {
+                    logger.info("Failed to update progress for user : {}, for assessment : {}, of course :{}", userId,
+                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
+                }
                 outgoingResponse.setResult(null);
                 updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
             }
@@ -248,7 +260,7 @@ public class ContentServiceImpl implements ContentService{
             Map<String, Object> contentResult = (Map<String, Object>) response.get(Constants.RESULT);
             return (Map<String, Object>) contentResult.get(Constants.CONTENT);
         }
-        return null;
+        return Collections.emptyMap();
     }
 
     @Override

@@ -13,7 +13,7 @@ public interface AssessmentUtilServiceV2 {
 	public Map<String, Object> validateQumlAssessment(List<String> originalQuestionList,
 													  List<Map<String, Object>> userQuestionList, Map<String, Object> questionMap) throws ApplicationLogicError;
 
-	public String fetchQuestionIdentifierValue(List<String> identifierList, List<Object> questionList, String primaryCategory) throws Exception;
+	public String fetchQuestionIdentifierValue(List<String> identifierList, List<Object> questionList, String primaryCategory);
 
 	Map<String, Object> filterQuestionMapDetail(Map<String, Object> questionMapResponse, String primaryCategory, boolean shuffle);
 

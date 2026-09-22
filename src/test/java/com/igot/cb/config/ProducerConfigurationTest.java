@@ -4,7 +4,6 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.Map;

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -14,8 +13,11 @@ public class Producer {
     private Logger log = LoggerFactory.getLogger(Producer.class);
 
 
-    @Autowired
-    KafkaTemplate<String, String> kafkaTemplate;
+    final KafkaTemplate<String, String> kafkaTemplate;
+
+    public Producer(KafkaTemplate<String, String> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
 
     public void push(String topic, Object value) {
         ObjectMapper mapper = new ObjectMapper();

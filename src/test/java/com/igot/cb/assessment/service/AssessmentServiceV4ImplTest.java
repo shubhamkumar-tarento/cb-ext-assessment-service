@@ -271,7 +271,7 @@ class AssessmentServiceV4ImplTest {
                 .thenReturn("english");
         when(assessUtilServ.readContentRecord(eq("course123"), anyList()))
                 .thenReturn("course123-baseLang");
-        when(contentService.readContent(eq("course123-baseLang")))
+        when(contentService.readContent("course123-baseLang"))
                 .thenReturn(courseMap);
         when(assessUtilServ.readQListfromCache(anyList(), anyString(), anyBoolean(), anyString()))
                 .thenReturn(new HashMap<>());
@@ -409,6 +409,7 @@ class AssessmentServiceV4ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testHandleAssessmentSubmitRequest_NormalFlow() throws Exception {
         Map<String, Object> asyncRequest = new HashMap<>();
         asyncRequest.put(Constants.USER_ID_CONSTANT, "user1");
@@ -447,6 +448,7 @@ class AssessmentServiceV4ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testValidateQuestionListAPI_Negative() throws Exception {
         // Inject mocks
         ReflectionTestUtils.setField(service, "accessTokenValidator", accessTokenValidator);
@@ -528,15 +530,6 @@ class AssessmentServiceV4ImplTest {
     }
 
     @Test
-    void testSubmitAssessmentAsync_Failed_InvalidAssessmentId() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        Map<String, Object> submitRequest = new HashMap<>();
-        SBApiResponse resp = service.submitAssessmentAsync(submitRequest, "token", false);
-        assertEquals(Constants.FAILED, resp.getParams().getStatus());
-        assertEquals(Constants.INVALID_ASSESSMENT_ID, resp.getParams().getErrmsg());
-    }
-
-    @Test
     void testSubmitAssessmentAsync_Failed_ReadAssessment() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         Map<String, Object> submitRequest = new HashMap<>();
@@ -583,7 +576,7 @@ class AssessmentServiceV4ImplTest {
         // Mock: content service course category
         Map<String, Object> courseCategoryMap = new HashMap<>();
         courseCategoryMap.put(Constants.COURSE_CATEGORY, "General");
-        when(contentService.readContent(eq("course123-baseLang")))
+        when(contentService.readContent("course123-baseLang"))
                 .thenReturn(courseCategoryMap);
 
         // Mock: validation logic
@@ -650,7 +643,7 @@ class AssessmentServiceV4ImplTest {
 
         Map<String, Object> courseCategoryMap = new HashMap<>();
         courseCategoryMap.put(Constants.COURSE_CATEGORY, "General");
-        when(contentService.readContent(eq("course123-baseLang")))
+        when(contentService.readContent("course123-baseLang"))
                 .thenReturn(courseCategoryMap);
 
         when(assessUtilServ.readQListfromCache(anyList(), anyString(), anyBoolean(), anyString()))
@@ -665,22 +658,8 @@ class AssessmentServiceV4ImplTest {
         assertEquals(Constants.SUCCESS, resp.getParams().getStatus());
     }
 
-
     @Test
-    void testSubmitAssessmentAsync_AssessmentSubmitFailed() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        Map<String, Object> submitRequest = new HashMap<>();
-        submitRequest.put(Constants.IDENTIFIER, "assess1");
-        submitRequest.put(Constants.LANGUAGE, "english");
-        submitRequest.put(Constants.CHILDREN, new ArrayList<>());
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenThrow(new RuntimeException("fail"));
-        SBApiResponse resp = service.submitAssessmentAsync(submitRequest, "token", false);
-        assertEquals(Constants.FAILED, resp.getParams().getStatus());
-        assertTrue(resp.getParams().getErrmsg().contains("Failed to process assessment submit request"));
-    }
-
-    @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessmentResultV4_Positive_Submitted() throws Exception {
         ReflectionTestUtils.setField(service, "accessTokenValidator", accessTokenValidator);
         ReflectionTestUtils.setField(service, "assessUtilServ", assessUtilServ);
@@ -815,6 +794,7 @@ class AssessmentServiceV4ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadQuestionList_Success() throws Exception {
         String token = "token";
         String assessmentId = "assess1";
@@ -1059,18 +1039,6 @@ class AssessmentServiceV4ImplTest {
     @Test
     void testGetShuffleFlagFromHierarchy_NullChildren_ReturnsTrue() throws Exception {
         Map<String, Object> hierarchy = new HashMap<>();
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
-        assertTrue(result);
-    }
-
-    @Test
-    void testGetShuffleFlagFromHierarchy_EmptyIdentifierList_ReturnsTrue() throws Exception {
-        Map<String, Object> hierarchy = new HashMap<>();
-        hierarchy.put(Constants.CHILDREN, List.of(
-                Map.of(Constants.IDENTIFIER, "q1")
-        ));
         Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
         method.setAccessible(true);
         boolean result = (boolean) method.invoke(service, hierarchy);

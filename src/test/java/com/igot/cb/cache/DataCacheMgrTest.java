@@ -50,6 +50,8 @@ class DataCacheMgrTest {
 
     @Test
     void testGetContentFromCacheWhenKeyNotPresent() {
-        assertNull(cacheMgr.getContentFromCache("noContentKey"));
+        Map<String, Object> content = cacheMgr.getContentFromCache("noContentKey");
+        assertNotNull(content);
+        assertTrue(content.isEmpty());
     }
 }

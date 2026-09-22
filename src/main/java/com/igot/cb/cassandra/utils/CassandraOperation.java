@@ -17,8 +17,6 @@ public interface CassandraOperation {
 	List<Map<String, Object>> getRecordsByPropertiesWithoutFiltering(String keyspaceName, String tableName,
 																	 Map<String, Object> propertyMap, List<String> fields);
 
-//	public Map<String, Object> getRecordsByPropertiesWithPagination(String keyspaceName, String tableName,
-//																	Map<String, Object> propertyMap, List<String> fields, int limit, String updatedOn, String key);
 	Map<String, Object> updateRecord(String keyspaceName, String tableName, Map<String, Object> updateAttributes,
 									 Map<String, Object> compositeKey);
 

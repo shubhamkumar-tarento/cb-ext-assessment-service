@@ -7,13 +7,13 @@ import org.apache.commons.lang3.StringUtils;
  * @author Manzarul
  */
 public enum ResponseCode {
-    unAuthorized(ResponseMessage.Key.UNAUTHORIZED_USER, ResponseMessage.Message.UNAUTHORIZED_USER),
-    internalError(ResponseMessage.Key.INTERNAL_ERROR, ResponseMessage.Message.INTERNAL_ERROR),
+    UNAUTHORIZED(ResponseMessage.Key.UNAUTHORIZED_USER, ResponseMessage.Message.UNAUTHORIZED_USER),
+    INTERNAL_ERROR(ResponseMessage.Key.INTERNAL_ERROR, ResponseMessage.Message.INTERNAL_ERROR),
 
     OK(200),
     CLIENT_ERROR(400),
     SERVER_ERROR(500);
-    private int responseCode;
+    private int statusCode;
     /**
      * error code contains String value
      */
@@ -33,7 +33,7 @@ public enum ResponseCode {
     }
 
     ResponseCode(int responseCode) {
-        this.responseCode = responseCode;
+        this.statusCode = responseCode;
     }
 
     /**
@@ -46,25 +46,17 @@ public enum ResponseCode {
         if (StringUtils.isBlank(errorCode)) {
             return null;
         } else if (Constants.UNAUTHORIZED.equals(errorCode)) {
-            return ResponseCode.unAuthorized;
+            return ResponseCode.UNAUTHORIZED;
         } else {
             ResponseCode value = null;
             ResponseCode[] responseCodes = ResponseCode.values();
             for (ResponseCode response : responseCodes) {
-                if (response.getErrorCode().equals(errorCode)) {
+                if (errorCode.equals(response.getErrorCode())) {
                     return response;
                 }
             }
             return value;
         }
-    }
-
-    /**
-     * @param errorCode
-     * @return
-     */
-    public String getMessage(int errorCode) {
-        return "";
     }
 
     /**
@@ -75,31 +67,13 @@ public enum ResponseCode {
     }
 
     /**
-     * @param errorCode
-     */
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
-    }
-
-    /**
      * @return
      */
     public String getErrorMessage() {
         return errorMessage;
     }
 
-    /**
-     * @param errorMessage
-     */
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
     public int getResponseCode() {
-        return responseCode;
-    }
-
-    public void setResponseCode(int responseCode) {
-        this.responseCode = responseCode;
+        return statusCode;
     }
 }

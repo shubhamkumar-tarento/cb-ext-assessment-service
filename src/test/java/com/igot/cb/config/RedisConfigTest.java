@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -32,8 +34,7 @@ class RedisConfigTest {
         when(properties.getNumTestsPerEvictionRun()).thenReturn(3);
         when(properties.isBlockWhenExhausted()).thenReturn(true);
 
-        redisConfig = new RedisConfig();
-        redisConfig.cbExtAssessmentServerProperties = properties;
+        redisConfig = new RedisConfig(properties);
     }
 
     @Test
@@ -59,8 +60,8 @@ class RedisConfigTest {
         assertTrue(config.getTestOnBorrow());
         assertFalse(config.getTestOnReturn());
         assertTrue(config.getTestWhileIdle());
-        assertEquals(60000L, config.getMinEvictableIdleTimeMillis());
-        assertEquals(30000L, config.getTimeBetweenEvictionRunsMillis());
+        assertEquals(Duration.ofMillis(60000L), config.getMinEvictableIdleDuration());
+        assertEquals(Duration.ofMillis(30000L), config.getTimeBetweenEvictionRuns());
         assertEquals(3, config.getNumTestsPerEvictionRun());
         assertTrue(config.getBlockWhenExhausted());
     }

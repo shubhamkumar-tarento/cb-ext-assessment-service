@@ -6,7 +6,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.keycloak.common.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -16,13 +15,17 @@ import java.util.Map;
 @Component
 public class AccessTokenValidator {
 
-    @Autowired
-    KeyManager keyManager;
+    final KeyManager keyManager;
+
+    public AccessTokenValidator(KeyManager keyManager) {
+        this.keyManager = keyManager;
+    }
+
     private static Logger logger = LoggerFactory.getLogger(AccessTokenValidator.class.getName());
     private static ObjectMapper mapper = new ObjectMapper();
     private static PropertiesCache cache = PropertiesCache.getInstance();
 
-    private Map<String, Object> validateToken(String token) throws Exception {
+    private Map<String, Object> validateToken(String token) {
         try {
             String[] tokenElements = token.split("\\.");
             String header = tokenElements[0];
@@ -43,19 +46,19 @@ public class AccessTokenValidator {
                         mapper.readValue(new String(decodeFromBase64(body)), Map.class);
                 boolean isExp = isExpired((Integer) tokenBody.get("exp"));
                 if (isExp) {
-                    return Collections.EMPTY_MAP;
+                    return Collections.emptyMap();
                 }
                 return tokenBody;
             }
         } catch (IOException e) {
-            return Collections.EMPTY_MAP;
+            return Collections.emptyMap();
         }
-        return Collections.EMPTY_MAP;
+        return Collections.emptyMap();
     }
 
 
     public String verifyUserToken(String token) {
-        String userId = Constants._UNAUTHORIZED;
+        String userId = Constants.UNAUTHORIZED_USER_ID;
         try {
             Map<String, Object> payload = validateToken(token);
             if (MapUtils.isNotEmpty(payload) && checkIss((String) payload.get("iss"))) {
@@ -91,7 +94,7 @@ public class AccessTokenValidator {
         if (accessToken != null) {
             try {
                 clientAccessTokenId = verifyUserToken(accessToken);
-                if (Constants._UNAUTHORIZED.equalsIgnoreCase(clientAccessTokenId)) {
+                if (Constants.UNAUTHORIZED_USER_ID.equalsIgnoreCase(clientAccessTokenId)) {
                     clientAccessTokenId = null;
                 }
             } catch (Exception ex) {

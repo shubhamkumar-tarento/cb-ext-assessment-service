@@ -18,6 +18,7 @@ import com.igot.cb.core.exception.ApplicationLogicError;
 import org.apache.coyote.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.*;
 
 
@@ -53,6 +54,7 @@ class AssessmentServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        ReflectionTestUtils.setField(assessmentService, "mapper", mapper);
     }
 
     @Test
@@ -116,9 +118,10 @@ class AssessmentServiceImplTest {
     }
 
     @Test
-    void testSubmitAssessmentByIframe_returnsNull() throws Exception {
+    void testSubmitAssessmentByIframe_returnsEmptyMap() {
         Map<String, Object> result = assessmentService.submitAssessmentByIframe("rootOrg", new HashMap<>());
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test

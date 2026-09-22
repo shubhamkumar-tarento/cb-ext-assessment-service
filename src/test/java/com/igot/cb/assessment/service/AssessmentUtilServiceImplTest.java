@@ -262,16 +262,20 @@ class AssessmentUtilServiceImplTest {
     }
 
     @Test
-    void testGetAnswerKeyForAssessmentAuthoringPreview_ReturnsNull() {
+    void testGetAnswerKeyForAssessmentAuthoringPreview_ReturnsEmptyMap() {
         Map<String, Object> contentMeta = new HashMap<>();
-        assertNull(utilService.getAnswerKeyForAssessmentAuthoringPreview(contentMeta));
+        Map<String, Object> answerKey = utilService.getAnswerKeyForAssessmentAuthoringPreview(contentMeta);
+        assertNotNull(answerKey);
+        assertTrue(answerKey.isEmpty());
     }
 
     @Test
     void testGetAnswerKeyForAssessmentAuthoringPreview_WithNonEmptyInput() {
         Map<String, Object> contentMeta = new HashMap<>();
         contentMeta.put("dummyKey", "dummyValue");
-        assertNull(utilService.getAnswerKeyForAssessmentAuthoringPreview(contentMeta));
+        Map<String, Object> answerKey = utilService.getAnswerKeyForAssessmentAuthoringPreview(contentMeta);
+        assertNotNull(answerKey);
+        assertTrue(answerKey.isEmpty());
     }
 
     @Test

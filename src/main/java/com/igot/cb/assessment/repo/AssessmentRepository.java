@@ -1,5 +1,6 @@
 package com.igot.cb.assessment.repo;
 
+import java.text.ParseException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +21,10 @@ public interface AssessmentRepository {
      * @param persist
      * @param isAssessment
      * @return
-     * @throws Exception
+     * @throws ParseException if the creation timestamp cannot be parsed
      */
-    public Map<String, Object> insertQuizOrAssessment(Map<String, Object> persist, Boolean isAssessment)
-            throws Exception;
+    Map<String, Object> insertQuizOrAssessment(Map<String, Object> persist, Boolean isAssessment)
+            throws ParseException;
 
     /**
      * gets assessment for a user given a content id
@@ -31,10 +32,8 @@ public interface AssessmentRepository {
      * @param courseId
      * @param userId
      * @return
-     * @throws Exception
      */
-    public List<Map<String, Object>> getAssessmentbyContentUser(String rootOrg, String courseId, String userId)
-            throws Exception;
+    List<Map<String, Object>> getAssessmentbyContentUser(String rootOrg, String courseId, String userId);
 
     List<Map<String, Object>> fetchUserAssessmentDataFromDB(String userId, String assessmentIdentifier);
 

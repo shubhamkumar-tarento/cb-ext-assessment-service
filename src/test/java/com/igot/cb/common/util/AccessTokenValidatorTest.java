@@ -43,11 +43,13 @@ class AccessTokenValidatorTest {
             var field = AccessTokenValidator.class.getDeclaredField("cache");
             field.setAccessible(true);
             field.set(null, cache);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            fail("Could not inject the mocked PropertiesCache into AccessTokenValidator.cache", e);
+        }
     }
 
     @Test
-    void testVerifyUserToken_ValidToken() throws Exception {
+    void testVerifyUserToken_ValidToken() {
         String headerJson = "{\"alg\":\"RS256\",\"kid\":\"kid1\"}";
         String bodyJson = "{\"exp\":" + (Time.currentTime() + 1000) + ",\"iss\":\"http://sso/realms/realm\",\"sub\":\"user:123\"}";
         String header = Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes());
@@ -65,7 +67,7 @@ class AccessTokenValidatorTest {
     }
 
     @Test
-    void testVerifyUserToken_ExpiredToken() throws Exception {
+    void testVerifyUserToken_ExpiredToken() {
         String headerJson = "{\"alg\":\"RS256\",\"kid\":\"kid1\"}";
         String bodyJson = "{\"exp\":1,\"iss\":\"http://sso/realms/realm\",\"sub\":\"user:123\"}";
         String header = Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes());
@@ -78,12 +80,12 @@ class AccessTokenValidatorTest {
             cryptoUtil.when(() -> CryptoUtil.verifyRSASign(anyString(), any(), any(), anyString())).thenReturn(true);
 
             String userId = validator.verifyUserToken(token);
-            assertEquals(Constants._UNAUTHORIZED, userId);
+            assertEquals(Constants.UNAUTHORIZED_USER_ID, userId);
         }
     }
 
     @Test
-    void testVerifyUserToken_InvalidSignature() throws Exception {
+    void testVerifyUserToken_InvalidSignature() {
         String headerJson = "{\"alg\":\"RS256\",\"kid\":\"kid1\"}";
         String bodyJson = "{\"exp\":" + (Time.currentTime() + 1000) + ",\"iss\":\"http://sso/realms/realm\",\"sub\":\"user:123\"}";
         String header = Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes());
@@ -96,7 +98,7 @@ class AccessTokenValidatorTest {
             cryptoUtil.when(() -> CryptoUtil.verifyRSASign(anyString(), any(), any(), anyString())).thenReturn(false);
 
             String userId = validator.verifyUserToken(token);
-            assertEquals(Constants._UNAUTHORIZED, userId);
+            assertEquals(Constants.UNAUTHORIZED_USER_ID, userId);
         }
     }
 
@@ -109,7 +111,7 @@ class AccessTokenValidatorTest {
     @Test
     void testFetchUserIdFromAccessToken_Unauthorized() {
         AccessTokenValidator spyValidator = spy(validator);
-        doReturn(Constants._UNAUTHORIZED).when(spyValidator).verifyUserToken(anyString());
+        doReturn(Constants.UNAUTHORIZED_USER_ID).when(spyValidator).verifyUserToken(anyString());
         String userId = spyValidator.fetchUserIdFromAccessToken("token");
         assertNull(userId);
     }

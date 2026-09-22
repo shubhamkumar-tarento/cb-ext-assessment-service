@@ -16,7 +16,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -36,28 +35,34 @@ import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
 @Service
 public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 
-	@Autowired
 	CbExtAssessmentServerProperties serverProperties;
 
-	@Autowired
 	OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
 
-	@Autowired
 	ObjectMapper mapper;
 
-	@Autowired
 	CassandraOperation cassandraOperation;
 
 	private Logger logger = LoggerFactory.getLogger(AssessmentUtilServiceV2Impl.class);
 
-	@Autowired
 	RedisCacheMgr redisCacheMgr;
 
-	@Autowired
 	ContentService contentService;
 
-	@Autowired
 	Producer kafkaProducer;
+
+	public AssessmentUtilServiceV2Impl(CbExtAssessmentServerProperties serverProperties,
+			OutboundRequestHandlerServiceImpl outboundRequestHandlerService, ObjectMapper mapper,
+			CassandraOperation cassandraOperation, RedisCacheMgr redisCacheMgr, ContentService contentService,
+			Producer kafkaProducer) {
+		this.serverProperties = serverProperties;
+		this.outboundRequestHandlerService = outboundRequestHandlerService;
+		this.mapper = mapper;
+		this.cassandraOperation = cassandraOperation;
+		this.redisCacheMgr = redisCacheMgr;
+		this.contentService = contentService;
+		this.kafkaProducer = kafkaProducer;
+	}
 
 	public Map<String, Object> validateQumlAssessment(List<String> originalQuestionList,
 													  List<Map<String, Object>> userQuestionList, Map<String, Object> questionMap) throws ApplicationLogicError {
@@ -65,59 +70,20 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			Integer correct = 0;
 			Integer blank = 0;
 			Integer inCorrect = 0;
-			Double result;
 			Integer total = 0;
 			Map<String, Object> resultMap = new HashMap<>();
 			Map<String, Object> answers = getQumlAnswers(originalQuestionList,questionMap);
 			for (Map<String, Object> question : userQuestionList) {
-				List<String> marked = new ArrayList<>();
-				if (question.containsKey(Constants.QUESTION_TYPE)) {
-					String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
-					Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
-					List<Map<String, Object>> options = (List<Map<String, Object>>) editorStateObj
-							.get(Constants.OPTIONS);
-					switch (questionType) {
-						case Constants.MTF:
-							for (Map<String, Object> option : options) {
-								marked.add(option.get(Constants.INDEX).toString() + "-"
-										+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
-							}
-							break;
-						case Constants.FTB:
-							for (Map<String, Object> option : options) {
-								marked.add((String) option.get(Constants.SELECTED_ANSWER));
-							}
-							break;
-						case Constants.MCQ_SCA:
-						case Constants.MCQ_MCA:
-							for (Map<String, Object> option : options) {
-								if ((boolean) option.get(Constants.SELECTED_ANSWER)) {
-									marked.add((String) option.get(Constants.INDEX));
-								}
-							}
-							break;
-						default:
-							break;
-					}
-				}
-				if (CollectionUtils.isEmpty(marked)){
+				List<String> marked = collectMarkedOptions(question);
+				if (CollectionUtils.isEmpty(marked)) {
 					blank++;
-					question.put(Constants.RESULT,Constants.BLANK);
-				}
-				else {
-					List<String> answer = (List<String>) answers.get(question.get(Constants.IDENTIFIER));
-					if (answer.size() > 1)
-						Collections.sort(answer);
-					if (marked.size() > 1)
-						Collections.sort(marked);
-					if (answer.equals(marked)){
-					    question.put(Constants.RESULT,Constants.CORRECT);
-						correct++;
-					}
-					else{
-						question.put(Constants.RESULT,Constants.INCORRECT);
-						inCorrect++;
-					}
+					question.put(Constants.RESULT, Constants.BLANK);
+				} else if (isAnswerCorrect(answers, question, marked)) {
+					question.put(Constants.RESULT, Constants.CORRECT);
+					correct++;
+				} else {
+					question.put(Constants.RESULT, Constants.INCORRECT);
+					inCorrect++;
 				}
 			}
 			// Increment the blank counter for skipped question objects
@@ -139,105 +105,147 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		return new HashMap<>();
 	}
 
-	private Map<String, Object> getQumlAnswers(List<String> questions,Map<String,Object> questionMap) throws Exception {
-		Map<String, Object> ret = new HashMap<>();
-
-		//Map<String, Map<String, Object>> questionMap = new HashMap<String, Map<String, Object>>();
-
-		for (String questionId : questions) {
-			List<String> correctOption = new ArrayList<>();
-			Map<String, Object> question = (Map<String, Object>) questionMap.get(questionId);
-			if (MapUtils.isEmpty(question)) {
-				ret.put(questionId, correctOption);
-				continue;
-			}
-			if (question.containsKey(Constants.QUESTION_TYPE)) {
-				String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
-				Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
-				if (MapUtils.isEmpty(editorStateObj)) {
-					ret.put(question.get(Constants.IDENTIFIER).toString(), correctOption);
-					continue;
+	/**
+	 * Collects the option values the user marked for a question, in the shape the answer key uses.
+	 * Returns an empty list when the question carries no question type — that is what the original
+	 * inline code produced, and the caller counts it as a blank answer.
+	 */
+	private List<String> collectMarkedOptions(Map<String, Object> question) {
+		List<String> marked = new ArrayList<>();
+		if (!question.containsKey(Constants.QUESTION_TYPE)) {
+			return marked;
+		}
+		String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
+		Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
+		List<Map<String, Object>> options = (List<Map<String, Object>>) editorStateObj
+				.get(Constants.OPTIONS);
+		switch (questionType) {
+			case Constants.MTF:
+				for (Map<String, Object> option : options) {
+					marked.add(option.get(Constants.INDEX).toString() + "-"
+							+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
 				}
-				List<Map<String, Object>> options = (List<Map<String, Object>>) editorStateObj.get(Constants.OPTIONS);
-				if (CollectionUtils.isEmpty(options)) {
-					ret.put(question.get(Constants.IDENTIFIER).toString(), correctOption);
-					continue;
+				break;
+			case Constants.FTB:
+				for (Map<String, Object> option : options) {
+					marked.add((String) option.get(Constants.SELECTED_ANSWER));
 				}
-				switch (questionType) {
-					case Constants.MTF:
-						for (Map<String, Object> option : options) {
-							Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
-							if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.VALUE) != null && option.get(Constants.ANSWER) != null) {
-								correctOption.add(valueObj.get(Constants.VALUE).toString() + "-"
-										+ option.get(Constants.ANSWER).toString().toLowerCase());
-							}
-						}
-						break;
-					case Constants.FTB:
-						for (Map<String, Object> option : options) {
-							if (Boolean.TRUE.equals(option.get(Constants.ANSWER))) {
-								Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
-								if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.BODY) != null) {
-									correctOption.add(valueObj.get(Constants.BODY).toString());
-								}
-							}
-						}
-						break;
-					case Constants.MCQ_SCA:
-					case Constants.MCQ_MCA:
-					case Constants.MCQ_SCA_TF:
-						for (Map<String, Object> option : options) {
-							if (Boolean.TRUE.equals(option.get(Constants.ANSWER))) {
-								Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
-								if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.VALUE) != null) {
-									correctOption.add(valueObj.get(Constants.VALUE).toString());
-								}
-							}
-						}
-						break;
-					default:
-						break;
-				}
-				ret.put(question.get(Constants.IDENTIFIER).toString(), correctOption);
-			} else {
-				List<Map<String, Object>> options = (List<Map<String, Object>>) question.get(Constants.OPTIONS);
-				if (!CollectionUtils.isEmpty(options)) {
-					for (Map<String, Object> opt : options) {
-						if (Boolean.TRUE.equals(opt.get(Constants.IS_CORRECT)) && opt.get(Constants.OPTION_ID) != null)
-							correctOption.add(opt.get(Constants.OPTION_ID).toString());
+				break;
+			case Constants.MCQ_SCA, Constants.MCQ_MCA:
+				for (Map<String, Object> option : options) {
+					if ((boolean) option.get(Constants.SELECTED_ANSWER)) {
+						marked.add((String) option.get(Constants.INDEX));
 					}
 				}
-				ret.put(question.get(Constants.IDENTIFIER) != null ? question.get(Constants.IDENTIFIER).toString() : questionId, correctOption);
+				break;
+			default:
+				break;
+		}
+		return marked;
+	}
+
+	/**
+	 * Compares the marked options against the answer key. Both lists are sorted in place first,
+	 * exactly as the original inline code did.
+	 */
+	private boolean isAnswerCorrect(Map<String, Object> answers, Map<String, Object> question,
+			List<String> marked) {
+		List<String> answer = (List<String>) answers.get(question.get(Constants.IDENTIFIER));
+		if (answer.size() > 1)
+			Collections.sort(answer);
+		if (marked.size() > 1)
+			Collections.sort(marked);
+		return answer.equals(marked);
+	}
+
+	private Map<String, Object> getQumlAnswers(List<String> questions, Map<String, Object> questionMap) {
+		Map<String, Object> ret = new HashMap<>();
+		for (String questionId : questions) {
+			Map<String, Object> question = (Map<String, Object>) questionMap.get(questionId);
+			if (MapUtils.isEmpty(question)) {
+				List<String> correctOption = new ArrayList<>();
+				ret.put(questionId, correctOption);
+			} else if (question.containsKey(Constants.QUESTION_TYPE)) {
+				ret.put(question.get(Constants.IDENTIFIER).toString(), correctOptionsFromEditorState(question));
+			} else {
+				ret.put(question.get(Constants.IDENTIFIER) != null
+						? question.get(Constants.IDENTIFIER).toString()
+						: questionId, correctOptionsFromOptionList(question));
 			}
 		}
-
 		return ret;
 	}
 
-	private Map<String, Map<String, Object>> fetchQuestionMapDetails(String questionId) {
-		// Taking the list which was formed with the not found values in Redis, we are
-		// making an internal POST call to Question List API to fetch the details
-		Map<String, Map<String, Object>> questionsMap = new HashMap<>();
-		List<Map<String, Object>> questionMapList = readQuestionDetails(Collections.singletonList(questionId));
-		for (Map<String, Object> questionMapResponse : questionMapList) {
-			if (!ObjectUtils.isEmpty(questionMapResponse)
-					&& Constants.OK.equalsIgnoreCase((String) questionMapResponse.get(Constants.RESPONSE_CODE))) {
-				List<Map<String, Object>> questionMap = ((List<Map<String, Object>>) ((Map<String, Object>) questionMapResponse
-						.get(Constants.RESULT)).get(Constants.QUESTIONS));
-				for (Map<String, Object> question : questionMap) {
-					if (!ObjectUtils.isEmpty(questionMap)) {
-						questionsMap.put((String) question.get(Constants.IDENTIFIER), question);
+	/**
+	 * Correct options for a question in the QuML shape, read from its editor state. Returns an
+	 * empty list when the editor state or its option list is missing — the two cases the original
+	 * loop handled with a {@code continue}.
+	 */
+	private List<String> correctOptionsFromEditorState(Map<String, Object> question) {
+		List<String> correctOption = new ArrayList<>();
+		String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
+		Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
+		if (MapUtils.isEmpty(editorStateObj)) {
+			return correctOption;
+		}
+		List<Map<String, Object>> options = (List<Map<String, Object>>) editorStateObj.get(Constants.OPTIONS);
+		if (CollectionUtils.isEmpty(options)) {
+			return correctOption;
+		}
+		switch (questionType) {
+			case Constants.MTF:
+				for (Map<String, Object> option : options) {
+					Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
+					if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.VALUE) != null && option.get(Constants.ANSWER) != null) {
+						correctOption.add(valueObj.get(Constants.VALUE).toString() + "-"
+								+ option.get(Constants.ANSWER).toString().toLowerCase());
 					}
 				}
+				break;
+			case Constants.FTB:
+				for (Map<String, Object> option : options) {
+					if (Boolean.TRUE.equals(option.get(Constants.ANSWER))) {
+						Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
+						if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.BODY) != null) {
+							correctOption.add(valueObj.get(Constants.BODY).toString());
+						}
+					}
+				}
+				break;
+			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
+				for (Map<String, Object> option : options) {
+					if (Boolean.TRUE.equals(option.get(Constants.ANSWER))) {
+						Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
+						if (MapUtils.isNotEmpty(valueObj) && valueObj.get(Constants.VALUE) != null) {
+							correctOption.add(valueObj.get(Constants.VALUE).toString());
+						}
+					}
+				}
+				break;
+			default:
+				break;
+		}
+		return correctOption;
+	}
+
+	/**
+	 * Correct options for a question that carries a plain option list rather than an editor state.
+	 */
+	private List<String> correctOptionsFromOptionList(Map<String, Object> question) {
+		List<String> correctOption = new ArrayList<>();
+		List<Map<String, Object>> options = (List<Map<String, Object>>) question.get(Constants.OPTIONS);
+		if (!CollectionUtils.isEmpty(options)) {
+			for (Map<String, Object> opt : options) {
+				if (Boolean.TRUE.equals(opt.get(Constants.IS_CORRECT)) && opt.get(Constants.OPTION_ID) != null)
+					correctOption.add(opt.get(Constants.OPTION_ID).toString());
 			}
 		}
-		return questionsMap;
+		return correctOption;
 	}
 
 	@Override
 	public String fetchQuestionIdentifierValue(List<String> identifierList, List<Object> questionList,
-			String primaryCategory)
-			throws Exception {
+			String primaryCategory) {
 		List<String> newIdentifierList = new ArrayList<>();
 		newIdentifierList.addAll(identifierList);
 		String errMsg = "";
@@ -360,8 +368,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			headers.put(Constants.X_AUTH_TOKEN, token);
 			headers.put(Constants.AUTHORIZATION, serverProperties.getSbApiKey());
 			Object o = outboundRequestHandlerService.fetchUsingGetWithHeaders(serviceURL, headers);
-			Map<String, Object> data = new ObjectMapper().convertValue(o, Map.class);
-			return data;
+			return new ObjectMapper().convertValue(o, Map.class);
 		} catch (Exception e) {
 			logger.error("error in getReadHierarchyApiResponse  " + e.getMessage(), e);
 		}
@@ -370,24 +377,25 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 
 	public Map<String,Object> fetchHierarchyFromAssessServc(String qSetId,String token){
 			Map<String, Object> readHierarchyApiResponse = getReadHierarchyApiResponse(qSetId, token);
-			if (!readHierarchyApiResponse.isEmpty())
-				if (ObjectUtils.isEmpty(readHierarchyApiResponse) || !Constants.OK.equalsIgnoreCase((String) readHierarchyApiResponse.get(Constants.RESPONSE_CODE))) {
-					throw new RuntimeException("Internal Server Error");
-				}
+			if (!readHierarchyApiResponse.isEmpty()
+					&& (ObjectUtils.isEmpty(readHierarchyApiResponse) || !Constants.OK.equalsIgnoreCase((String) readHierarchyApiResponse.get(Constants.RESPONSE_CODE)))) {
+				throw new ApplicationLogicError("Internal Server Error");
+			}
 			return ((Map<String, Object>) ((Map<String, Object>) readHierarchyApiResponse.get(Constants.RESULT)).get(Constants.QUESTION_SET));
 	}
 
 	public Map<String, Object> readAssessmentHierarchyFromCache(String assessmentIdentifier,boolean editMode,String token) {
 
-		if(editMode)
-		return fetchHierarchyFromAssessServc(assessmentIdentifier,token);
+		if (editMode) {
+			return fetchHierarchyFromAssessServc(assessmentIdentifier, token);
+		}
 
 		String questStr = Constants.EMPTY;
 		if(serverProperties.qListFromCacheEnabled()) {
 			 questStr = redisCacheMgr.getCache(Constants.ASSESSMENT_ID + assessmentIdentifier + Constants.UNDER_SCORE + Constants.QUESTION_SET);		
 		}
 		if(StringUtils.isEmpty(questStr)) {
-			Map<String, Object> propertyMap = new HashMap<String, Object>();
+			Map<String, Object> propertyMap = new HashMap<>();
 		propertyMap.put(Constants.IDENTIFIER, assessmentIdentifier);
 		List<Map<String, Object>> hierarchyList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
 				serverProperties.getAssessmentHierarchyNameSpace(),
@@ -412,7 +420,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				return mapper.readValue(questStr, new TypeReference<Map<String, Object>>() {
 				});
 			} catch (IOException e) {
-				throw new RuntimeException(e);
+				throw new ApplicationLogicError("Failed to parse the cached assessment hierarchy", e);
 			}
 		}
 		
@@ -420,7 +428,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	}
 
 	public List<Map<String, Object>> readUserSubmittedAssessmentRecords(String userId, String assessmentId) {
-		Map<String, Object> propertyMap = new HashMap<String, Object>();
+		Map<String, Object> propertyMap = new HashMap<>();
 		propertyMap.put(Constants.USER_ID, userId);
 		propertyMap.put(Constants.ASSESSMENT_ID_KEY, assessmentId);
 		return cassandraOperation.getRecordsByPropertiesWithoutFiltering(
@@ -488,7 +496,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
                return  mapper.readValue(res, new TypeReference<Map<String, Object>>() {
                 });
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new ApplicationLogicError("Failed to parse the cached Wheebox response", e);
             }
         }
 		return new HashMap<>();
@@ -533,7 +541,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				Map<String, Object> proficiencyMap = getProficiencyMap(questionMap, question);
 				List<String> marked = new ArrayList<>();
 				List<Map<String, Object>> options = new ArrayList<>();
-				options = handleqTypeQuestion(question, options, marked, assessmentType, optionWeightages, sectionMarks);
+				handleqTypeQuestion(question, options, marked, assessmentType);
 				if (CollectionUtils.isEmpty(marked)){
 					blank++;
 					question.put(Constants.RESULT,Constants.BLANK);
@@ -575,10 +583,10 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				if (submittedQuestionSetIndex.equals(optionWeightAgeFromOptions.getKey())) {
 					Object value = optionWeightAgeFromOptions.getValue();
 					double weightage = 0;
-					if (value instanceof Number) {
-						weightage = ((Number) value).doubleValue();
-					} else if (value instanceof String) {
-						weightage = Double.parseDouble((String) value);
+					if (value instanceof Number number) {
+						weightage = number.doubleValue();
+					} else if (value instanceof String string) {
+						weightage = Double.parseDouble(string);
 					}
 					sectionMarks = sectionMarks + weightage;
 				}
@@ -587,7 +595,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		return sectionMarks;
 	}
 
-	private List<Map<String, Object>> handleqTypeQuestion(Map<String, Object> question, List<Map<String, Object>> options, List<String> marked, String assessmentType, Map<String, Object> optionWeightages, Double sectionMarks) {
+	private List<Map<String, Object>> handleqTypeQuestion(Map<String, Object> question, List<Map<String, Object>> options, List<String> marked, String assessmentType) {
 		if (question.containsKey(Constants.QUESTION_TYPE)) {
 			String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
 			Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
@@ -618,9 +626,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				Map<String, Object> editorStateObj = (Map<String, Object>) question.get(Constants.EDITOR_STATE);
 				List<Map<String, Object>> options = (List<Map<String, Object>>) editorStateObj.get(Constants.OPTIONS);
 				switch (questionType) {
-					case Constants.MCQ_SCA:
-					case Constants.MCQ_MCA:
-					case Constants.MCQ_MCA_W:
+					case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_MCA_W:
 						for (Map<String, Object> option : options) {
 							Map<String, Object> valueObj = (Map<String, Object>) option.get(Constants.VALUE);
 							optionWeightage.put(valueObj.get(Constants.VALUE).toString(), option.get(Constants.ANSWER));
@@ -659,9 +665,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 					marked.add((String) option.get(Constants.SELECTED_ANSWER));
 				}
 				break;
-			case Constants.MCQ_SCA:
-			case Constants.MCQ_MCA:
-			case Constants.MCQ_SCA_TF:
+			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
 				if (assessmentType.equalsIgnoreCase(Constants.QUESTION_WEIGHTAGE)) {
 					getMarkedIndexForQuestionWeightAge(options, marked);
 				} else if (assessmentType.equalsIgnoreCase(Constants.OPTION_WEIGHTAGE)) {
@@ -717,7 +721,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	 */
 	private Double handleCorrectAnswer(Double sectionMarks, Map<String, Object> questionSetSectionScheme, Map<String, Object> proficiencyMap) {
 		logger.info("Handling correct answer scenario...");
-		sectionMarks = sectionMarks + (Integer) questionSetSectionScheme.get((String) proficiencyMap.get(Constants.QUESTION_LEVEL));
+		sectionMarks = sectionMarks + (Integer) questionSetSectionScheme.get(proficiencyMap.get(Constants.QUESTION_LEVEL));
 		logger.info("Correct answer scenario handled successfully.");
 		return sectionMarks;
 	}
@@ -735,7 +739,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	private Double handleIncorrectAnswer(int negativeMarksValue,Double sectionMarks, Map<String, Object> questionSetSectionScheme, Map<String, Object> proficiencyMap) {
 		logger.info("Handling incorrect answer scenario...");
 		if (negativeMarksValue > 0) {
-			sectionMarks = sectionMarks - (((double)negativeMarksValue /100 ) * (int) questionSetSectionScheme.get((String)proficiencyMap.get(Constants.QUESTION_LEVEL)));
+			sectionMarks = sectionMarks - (((double)negativeMarksValue /100 ) * (int) questionSetSectionScheme.get(proficiencyMap.get(Constants.QUESTION_LEVEL)));
 		}
 		logger.info("Incorrect answer scenario handled successfully.");
 		return sectionMarks;
@@ -1012,8 +1016,8 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	 */
 	private int getTotalMarks(Map<String, Object> questionSetDetailsMap) {
 		Object totalMarksObj = questionSetDetailsMap.get(Constants.TOTAL_MARKS);
-		if (totalMarksObj instanceof Number) {
-			return ((Number) totalMarksObj).intValue();
+		if (totalMarksObj instanceof Number number) {
+			return number.intValue();
 		} else {
 			return 0;
 		}
@@ -1043,9 +1047,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 					case Constants.FTB:
 						processFillInTheBlankOptions(options, correctOption);
 						break;
-					case Constants.MCQ_SCA:
-					case Constants.MCQ_MCA:
-					case Constants.MCQ_SCA_TF:
+					case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
 						for (Map<String, Object> option : options) {
 							if ((boolean) option.get(Constants.ANSWER)) {
 								Map<String, Object> valueObj = mapper.convertValue(option.get(Constants.VALUE), new TypeReference<Map<String, Object>>() {
@@ -1112,9 +1114,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			case Constants.FTB:
 				processFillInTheBlankUserAnswers(options, marked);
 				break;
-			case Constants.MCQ_SCA:
-			case Constants.MCQ_MCA:
-			case Constants.MCQ_SCA_TF:
+			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
 				if (assessmentType.equalsIgnoreCase(Constants.QUESTION_WEIGHTAGE)) {
 					getMarkedIndexForQuestionWeightAge(options, marked);
 				} else if (assessmentType.equalsIgnoreCase(Constants.OPTION_WEIGHTAGE)) {
@@ -1204,8 +1204,10 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 
 		for (Map<String, Object> enrolment : activeEnrolments) {
 			if (Constants.ASSESSMENT_STATUS_COMPLETED != (int) enrolment.get(Constants.STATUS)) {
-				logger.info("{} User: {}, not completed course: {}", Constants.PREFIX_VALIDATE_COMPLETED_COURSE,
-						userId, (String) enrolment.get(Constants.COURSE_ID));
+				if (logger.isInfoEnabled()) {
+					logger.info("{} User: {}, not completed course: {}", Constants.PREFIX_VALIDATE_COMPLETED_COURSE,
+							userId, enrolment.get(Constants.COURSE_ID));
+				}
 				return false;
 			}
 		}
@@ -1248,19 +1250,18 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 
 
 	public Instant parseStartTimeToInstant(Object startTimeObj) {
-		if (startTimeObj instanceof Long) {
-			return Instant.ofEpochMilli((Long) startTimeObj);
-		} else if (startTimeObj instanceof String) {
-			String startTimeStr = (String) startTimeObj;
+		if (startTimeObj instanceof Long epochMilli) {
+			return Instant.ofEpochMilli(epochMilli);
+		} else if (startTimeObj instanceof String startTimeStr) {
 			if (startTimeStr.matches("\\d+")) {
 				return Instant.ofEpochMilli(Long.parseLong(startTimeStr));
 			} else {
 				return Instant.parse(startTimeStr);
 			}
-		} else if (startTimeObj instanceof Instant) {
-			return (Instant) startTimeObj;
-		} else if (startTimeObj instanceof Date) {
-			return ((Date) startTimeObj).toInstant();
+		} else if (startTimeObj instanceof Instant instant) {
+			return instant;
+		} else if (startTimeObj instanceof Date date) {
+			return date.toInstant();
 		} else {
 			throw new IllegalArgumentException("Unsupported start time type: " +
 					(startTimeObj != null ? startTimeObj.getClass().getName() : "null"));
@@ -1268,14 +1269,13 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	}
 
 	public Long parseStartTimeToLong(Object startTimeObj) {
-		if (startTimeObj instanceof Date) {
-			return ((Date) startTimeObj).getTime();
-		} else if (startTimeObj instanceof Instant) {
-			return ((Instant) startTimeObj).toEpochMilli();
-		} else if (startTimeObj instanceof Long) {
-			return (Long) startTimeObj;
-		} else if (startTimeObj instanceof String) {
-			String str = (String) startTimeObj;
+		if (startTimeObj instanceof Date date) {
+			return date.getTime();
+		} else if (startTimeObj instanceof Instant instant) {
+			return instant.toEpochMilli();
+		} else if (startTimeObj instanceof Long epochMilli) {
+			return epochMilli;
+		} else if (startTimeObj instanceof String str) {
 			if (str.matches("\\d+")) {
 				return Long.parseLong(str);
 			} else {
@@ -1301,7 +1301,6 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 								return String.valueOf(langDetails.get("id"));
 							}
 						}
-						return courseId;
 					}
 				} else {
 					logger.error("AssessmentUtilServiceV2Impl:readAssessmentLanguage No data found in RESULT");

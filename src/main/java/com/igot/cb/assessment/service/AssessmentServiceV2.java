@@ -1,22 +1,23 @@
 package com.igot.cb.assessment.service;
 
 
+import java.io.IOException;
 import java.util.Map;
 import com.igot.cb.common.model.SBApiResponse;
 
 public interface AssessmentServiceV2 {
 	/**
 	 * submits an assessment
-	 * 
+	 *
 	 * @param data
 	 * @return
-	 * @throws Exception
+	 * @throws IOException if the assessment hierarchy cannot be read
 	 */
-	public SBApiResponse submitAssessment(Map<String, Object> data, String userEmail,boolean editMode) throws Exception;
+	SBApiResponse submitAssessment(Map<String, Object> data, String userEmail,boolean editMode) throws IOException;
 
-	public SBApiResponse readAssessment(String assessmentIdentifier, String token) throws Exception;
+	SBApiResponse readAssessment(String assessmentIdentifier, String token);
 
-	public SBApiResponse readQuestionList(Map<String, Object> requestBody, String authUserToken) throws Exception;
+	SBApiResponse readQuestionList(Map<String, Object> requestBody, String authUserToken);
 
-	public SBApiResponse retakeAssessment(String assessmentIdentifier, String token) throws Exception;
+	SBApiResponse retakeAssessment(String assessmentIdentifier, String token);
 }

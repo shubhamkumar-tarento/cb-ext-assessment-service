@@ -21,10 +21,9 @@ public class CassandraPropertyReader {
 	private final Properties properties = new Properties();
 
 	/**
-	 * Private constructor to prevent instantiation from outside.
-	 * Loads properties from the configuration file.
+	 * Loads properties from the configuration file on construction.
 	 */
-	private CassandraPropertyReader() {
+	public CassandraPropertyReader() {
 		loadProperties();
 	}
 
@@ -46,16 +45,6 @@ public class CassandraPropertyReader {
 	}
 
 	/**
-	 * Retrieves the instance of CassandraPropertyReaderV2.
-	 * This method follows lazy initialization.
-	 *
-	 * @return An instance of CassandraPropertyReaderV2.
-	 */
-	public static CassandraPropertyReader getInstance() {
-		return Holder.INSTANCE;
-	}
-
-	/**
 	 * Retrieves the property value for the given key.
 	 * If the key is not found, the key itself is returned.
 	 *
@@ -64,13 +53,5 @@ public class CassandraPropertyReader {
 	 */
 	public String readProperty(String key) {
 		return properties.getProperty(key, key); // Return key itself if property not found
-	}
-
-	/**
-	 * Holder class for lazy initialization of CassandraPropertyReaderV2 instance.
-	 * This ensures thread-safe and efficient lazy loading.
-	 */
-	private static class Holder {
-		private static final CassandraPropertyReader INSTANCE = new CassandraPropertyReader();
 	}
 }

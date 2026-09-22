@@ -12,8 +12,6 @@ import com.igot.cb.core.exception.CustomException;
 import lombok.extern.slf4j.Slf4j;
 import com.datastax.oss.driver.api.core.metadata.Node;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -22,14 +20,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 @Component
 @Slf4j
 public class CassandraConnectionManagerImpl implements CassandraConnectionManager {
 
     private static final Map<String, CqlSession> cassandraSessionMap = new ConcurrentHashMap<>(2);
     private static CqlSession session;
-    private static final Logger logger = LoggerFactory.getLogger(CassandraConnectionManagerImpl.class);
+    private static final String LOCAL_DATACENTER = "datacenter1";
 
     public CassandraConnectionManagerImpl() {
         // Initialize the connection and register shutdown hook
@@ -52,7 +49,7 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
     }
 
 
-    private void createCassandraConnection() {
+    private static void createCassandraConnection() {
         try {
             session = createCassandraConnectionWithKeySpaces(null);
         } catch (Exception e) {
@@ -64,7 +61,7 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
         }
     }
 
-    private CqlSession createCassandraConnectionWithKeySpaces(String keySpaceName) {
+    private static CqlSession createCassandraConnectionWithKeySpaces(String keySpaceName) {
         try {
             // Load the properties required for connection
             PropertiesCache cache = PropertiesCache.getInstance();
@@ -78,16 +75,16 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
             List<String> hosts = Arrays.asList(cassandraHost.split(","));
             List<InetSocketAddress> contactPoints = hosts.stream()
                     .map(host -> new InetSocketAddress(host.trim(), 9042)) // Assuming default port 9042
-                    .collect(Collectors.toList());
+                    .toList();
             List<String> contactPointsString = hosts.stream()
                     .map(host -> host.trim() + ":9042") // Ensure proper host:port format
-                    .collect(Collectors.toList());
+                    .toList();
             ConsistencyLevel consistencyLevel = getConsistencyLevel();
             String consistencyLevelName = consistencyLevel != null ? consistencyLevel.name() : ConsistencyLevel.LOCAL_ONE.name();
             DriverConfigLoader loader = DriverConfigLoader.programmaticBuilder()
                     .withStringList(DefaultDriverOption.CONTACT_POINTS, contactPointsString)
                     .withString(DefaultDriverOption.REQUEST_CONSISTENCY, consistencyLevelName)
-                    .withString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER, "datacenter1")
+                    .withString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER, LOCAL_DATACENTER)
                     .withInt(DefaultDriverOption.CONNECTION_POOL_LOCAL_SIZE,
                             Integer.parseInt(cache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_LOCAL)))
                     .withInt(DefaultDriverOption.CONNECTION_POOL_REMOTE_SIZE,
@@ -104,14 +101,14 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
             if (StringUtils.isNotBlank(keySpaceName)) {
                 sessionWithKeyspaces = CqlSession.builder()
                         .addContactPoints(contactPoints)
-                        .withLocalDatacenter("datacenter1")
+                        .withLocalDatacenter(LOCAL_DATACENTER)
                         .withKeyspace(keySpaceName)
                         .withConfigLoader(loader)
                         .build();
             } else {
                 sessionWithKeyspaces = CqlSession.builder()
                         .addContactPoints(contactPoints)
-                        .withLocalDatacenter("datacenter1")
+                        .withLocalDatacenter(LOCAL_DATACENTER)
                         .withConfigLoader(loader)
                         .build();
             }

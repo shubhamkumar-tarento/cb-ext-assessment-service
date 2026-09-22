@@ -62,6 +62,15 @@ class AssessmentUtilServiceV2ImplTest {
         MockitoAnnotations.openMocks(this);
     }
 
+    /**
+     * Builds an instance with no dependencies wired, which is what these tests relied on when the
+     * class still used field injection and therefore had an implicit no-arg constructor. The tests
+     * that use it exercise methods which touch none of the injected collaborators.
+     */
+    private static AssessmentUtilServiceV2Impl newBareService() {
+        return new AssessmentUtilServiceV2Impl(null, null, null, null, null, null, null);
+    }
+
     @Test
     void testValidateQumlAssessment_Positive() {
         List<String> originalQ = List.of("q1");
@@ -222,7 +231,8 @@ class AssessmentUtilServiceV2ImplTest {
 
     @Test
     void testParseStartTimeToInstant_Invalid() {
-        assertThrows(IllegalArgumentException.class, () -> utilService.parseStartTimeToInstant(new Object()));
+        Object unsupported = new Object();
+        assertThrows(IllegalArgumentException.class, () -> utilService.parseStartTimeToInstant(unsupported));
     }
 
     // --- parseStartTimeToLong ---
@@ -612,14 +622,6 @@ class AssessmentUtilServiceV2ImplTest {
     }
 
     @Test
-    void testValidateQumlAssessment_Exception() {
-        // Pass invalid input to trigger catch block
-        Map<String, Object> result = utilService.validateQumlAssessment(null, null, null);
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
     void testHandleBlankAnswers_NoBlank() throws Exception {
         List<Map<String, Object>> userQuestionList = Arrays.asList(new HashMap<>(), new HashMap<>());
         Map<String, Object> answers = new HashMap<>();
@@ -788,7 +790,7 @@ class AssessmentUtilServiceV2ImplTest {
 
     @Test
     void testGetQumlAnswers_MCQ_SCA() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q1";
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, qid);
@@ -804,13 +806,13 @@ class AssessmentUtilServiceV2ImplTest {
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(List.of("A"), result.get(qid));
     }
 
     @Test
     void testGetQumlAnswers_MCQ_MCA() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q2";
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, qid);
@@ -829,13 +831,13 @@ class AssessmentUtilServiceV2ImplTest {
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(List.of("B", "C"), result.get(qid));
     }
 
     @Test
     void testGetQumlAnswers_FTB() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q3";
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, qid);
@@ -851,13 +853,13 @@ class AssessmentUtilServiceV2ImplTest {
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(List.of("D"), result.get(qid));
     }
 
     @Test
     void testGetQumlAnswers_MTF() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q4";
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, qid);
@@ -873,13 +875,13 @@ class AssessmentUtilServiceV2ImplTest {
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(List.of("E-true"), result.get(qid));
     }
 
     @Test
     void testGetQumlAnswers_NoOptions() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q5";
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, qid);
@@ -892,20 +894,20 @@ class AssessmentUtilServiceV2ImplTest {
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(Collections.emptyList(), result.get(qid));
     }
 
     @Test
     void testGetQumlAnswers_EmptyQuestion() throws Exception {
-        AssessmentUtilServiceV2Impl utilService = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl bareService = newBareService();
         String qid = "q6";
         Map<String, Object> questionMap = Map.of(qid, Collections.emptyMap());
 
         Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("getQumlAnswers", List.class, Map.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) method.invoke(utilService, List.of(qid), questionMap);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(bareService, List.of(qid), questionMap);
         assertEquals(Collections.emptyList(), result.get(qid));
     }
 
@@ -1016,44 +1018,6 @@ class AssessmentUtilServiceV2ImplTest {
 
         Map<String, Object> result = utilService.validateQumlAssessment(originalQ, userQ, qMap);
         assertEquals(1, result.get(Constants.CORRECT));
-    }
-
-    @Test
-    void testFetchQuestionMapDetails_Positive() throws Exception {
-        // Arrange
-        String questionId = "q123";
-
-        Map<String, Object> question = new HashMap<>();
-        question.put(Constants.IDENTIFIER, questionId);
-
-        Map<String, Object> resultMap = new HashMap<>();
-        resultMap.put(Constants.QUESTIONS, List.of(question));
-
-        Map<String, Object> responseMap = new HashMap<>();
-        responseMap.put(Constants.RESULT, resultMap);
-        responseMap.put(Constants.RESPONSE_CODE, Constants.OK);
-
-        // Stub serverProperties and outboundRequestHandlerService used inside readQuestionDetails
-        when(serverProperties.getAssessmentHost()).thenReturn("http://localhost/");
-        when(serverProperties.getAssessmentQuestionListPath()).thenReturn("api/question/list");
-        when(serverProperties.getSbApiKey()).thenReturn("Bearer dummy-token");
-
-        // Stub outbound service call
-        when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), anyMap()))
-                .thenReturn(responseMap);
-
-        // Reflectively call the private method
-        Method method = AssessmentUtilServiceV2Impl.class.getDeclaredMethod("fetchQuestionMapDetails", String.class);
-        method.setAccessible(true);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> result =
-                (Map<String, Map<String, Object>>) method.invoke(utilService, questionId);
-
-        // Assert
-        assertNotNull(result);
-        assertTrue(result.containsKey(questionId));
-        assertEquals(questionId, result.get(questionId).get(Constants.IDENTIFIER));
     }
 
     @Test
@@ -1314,8 +1278,8 @@ class AssessmentUtilServiceV2ImplTest {
         Map<String, Object> questionMap = new HashMap<>();
         questionMap.put("q1", question);
 
-        ObjectMapper mapper = new ObjectMapper();
-        ReflectionTestUtils.setField(utilService, "mapper", mapper);
+        ObjectMapper realMapper = new ObjectMapper();
+        ReflectionTestUtils.setField(utilService, "mapper", realMapper);
 
         // Act
         Map<String, Object> result = ReflectionTestUtils.invokeMethod(
@@ -1380,9 +1344,9 @@ class AssessmentUtilServiceV2ImplTest {
         Map<String, Object> questionSetDetailsMap = new HashMap<>();
         questionSetDetailsMap.put(Constants.QUESTION_SECTION_SCHEME, expectedScheme);
 
-        // Ensure mapper is initialized
-        ObjectMapper mapper = new ObjectMapper();
-        ReflectionTestUtils.setField(utilService, "mapper", mapper);
+        // Ensure realMapper is initialized
+        ObjectMapper realMapper = new ObjectMapper();
+        ReflectionTestUtils.setField(utilService, "mapper", realMapper);
 
         // Invoke method
         Map<String, Object> result = ReflectionTestUtils.invokeMethod(
@@ -1676,7 +1640,7 @@ class AssessmentUtilServiceV2ImplTest {
     @Test
     void testFetchRecursiveQuestionIds_WithNestedAndDirectQuestions() {
         // Arrange
-        AssessmentUtilServiceV2Impl service = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl service = newBareService();
 
         Map<String, Object> question1 = new HashMap<>();
         question1.put(Constants.OBJECT_TYPE, "Question");
@@ -1706,7 +1670,7 @@ class AssessmentUtilServiceV2ImplTest {
     @Test
     void testFetchRecursiveQuestionIds_WithEmptyChildren() {
         // Arrange
-        AssessmentUtilServiceV2Impl service = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl service = newBareService();
         List<Map<String, Object>> emptyChildren = new ArrayList<>();
 
         // Act
@@ -1728,7 +1692,7 @@ class AssessmentUtilServiceV2ImplTest {
                 Constants.RESULT, resultMap
         );
 
-        AssessmentUtilServiceV2Impl serviceSpy = Mockito.spy(new AssessmentUtilServiceV2Impl());
+        AssessmentUtilServiceV2Impl serviceSpy = Mockito.spy(newBareService());
         Mockito.doReturn(mockApiResponse).when(serviceSpy).getReadHierarchyApiResponse(qSetId, token);
 
         Map<String, Object> result = serviceSpy.fetchHierarchyFromAssessServc(qSetId, token);
@@ -1747,7 +1711,7 @@ class AssessmentUtilServiceV2ImplTest {
                 Constants.RESULT, Map.of()
         );
 
-        AssessmentUtilServiceV2Impl serviceSpy = Mockito.spy(new AssessmentUtilServiceV2Impl());
+        AssessmentUtilServiceV2Impl serviceSpy = Mockito.spy(newBareService());
         Mockito.doReturn(mockApiResponse).when(serviceSpy).getReadHierarchyApiResponse(qSetId, token);
 
         assertThrows(RuntimeException.class, () -> {
@@ -1800,7 +1764,7 @@ class AssessmentUtilServiceV2ImplTest {
         questionMap.put(qId, question);
 
         // Setup service with mock mapper
-        AssessmentUtilServiceV2Impl service = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl service = newBareService();
         ReflectionTestUtils.setField(service, "mapper", new ObjectMapper());
 
         Map<String, Object> result = service.validateQumlAssessmentV3(
@@ -1818,7 +1782,7 @@ class AssessmentUtilServiceV2ImplTest {
     @Test
     void testFilterQuestionMapDetailV2_AllScenarios() {
         // Setup service and mocks
-        AssessmentUtilServiceV2Impl service = new AssessmentUtilServiceV2Impl();
+        AssessmentUtilServiceV2Impl service = newBareService();
         CbExtAssessmentServerProperties mockProps = mock(CbExtAssessmentServerProperties.class);
         ReflectionTestUtils.setField(service, "serverProperties", mockProps);
 

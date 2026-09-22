@@ -64,8 +64,8 @@ class KeyManagerTest {
             PropertiesCache cache = mock(PropertiesCache.class);
             staticMock.when(PropertiesCache::getInstance).thenReturn(cache);
             when(cache.getProperty(anyString())).thenReturn("/invalid/path");
-            // Should not throw, just log error
-            keyManager.init();
+            // an unreadable key directory must be logged and swallowed, not propagated
+            assertDoesNotThrow(keyManager::init);
         }
     }
 

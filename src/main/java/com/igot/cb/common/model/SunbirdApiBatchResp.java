@@ -17,7 +17,7 @@ public class SunbirdApiBatchResp implements Serializable {
 	private String enrollmentEndDate;
 	private String startDate;
 	private int status;
-	private Map<String, Object> batchAttributes = new HashMap<>();
+	private transient Map<String, Object> batchAttributes = new HashMap<>();
 	public List<String> getCreatedFor() {
 		return createdFor;
 	}

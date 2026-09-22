@@ -24,7 +24,7 @@ class UserAssessmentMasterModelTest {
         model.setPassPercent(new BigDecimal("75.5"));
         model.setSourceId("src123");
         model.setSourceTitle("Assessment Title");
-        model.setUser_id("user1");
+        model.setUserId("user1");
 
         assertEquals(pk, model.getPrimaryKey());
         assertEquals(5, model.getCorrectCount());
@@ -44,9 +44,18 @@ class UserAssessmentMasterModelTest {
         Date now = new Date();
         BigDecimal percent = new BigDecimal("80.0");
 
-        UserAssessmentMasterModel model = new UserAssessmentMasterModel(
-                pk, 10, now, 3, 0, "module", percent, "srcId", "Title", "userX"
-        );
+        UserAssessmentMasterModel model = UserAssessmentMasterModel.builder()
+                .primaryKey(pk)
+                .correctCount(10)
+                .dateCreated(now)
+                .incorrectCount(3)
+                .notAnsweredCount(0)
+                .parentContentType("module")
+                .passPercent(percent)
+                .sourceId("srcId")
+                .sourceTitle("Title")
+                .userId("userX")
+                .build();
 
         assertEquals(pk, model.getPrimaryKey());
         assertEquals(10, model.getCorrectCount());
@@ -63,9 +72,18 @@ class UserAssessmentMasterModelTest {
     @Test
     void testToString() {
         UserAssessmentMasterPrimaryKeyModel pk = new UserAssessmentMasterPrimaryKeyModel();
-        UserAssessmentMasterModel model = new UserAssessmentMasterModel(
-                pk, 1, new Date(0), 2, 3, "type", new BigDecimal("50"), "sid", "stitle", "uid"
-        );
+        UserAssessmentMasterModel model = UserAssessmentMasterModel.builder()
+                .primaryKey(pk)
+                .correctCount(1)
+                .dateCreated(new Date(0))
+                .incorrectCount(2)
+                .notAnsweredCount(3)
+                .parentContentType("type")
+                .passPercent(new BigDecimal("50"))
+                .sourceId("sid")
+                .sourceTitle("stitle")
+                .userId("uid")
+                .build();
         String str = model.toString();
         assertTrue(str.contains("primaryKey="));
         assertTrue(str.contains("correctCount=1"));

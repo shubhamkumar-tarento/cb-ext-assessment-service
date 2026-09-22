@@ -23,16 +23,4 @@ class CustomExceptionTest {
         assertEquals("Something went wrong", ex.getMessage());
         assertEquals(HttpStatus.BAD_REQUEST, ex.getHttpStatusCode());
     }
-
-    @Test
-    void testSettersAndGetters() {
-        CustomException ex = new CustomException();
-        ex.setCode("ERR002");
-        ex.setMessage("Another error");
-        ex.setHttpStatusCode(HttpStatus.NOT_FOUND);
-
-        assertEquals("ERR002", ex.getCode());
-        assertEquals("Another error", ex.getMessage());
-        assertEquals(HttpStatus.NOT_FOUND, ex.getHttpStatusCode());
-    }
 }

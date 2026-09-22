@@ -5,7 +5,6 @@ import com.datastax.oss.driver.api.core.cql.Row;
 import com.igot.cb.common.util.Constants;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * @author fathima
@@ -16,7 +15,7 @@ public final class CassandraUtil {
     private CassandraUtil() {
     }
 
-    private static final CassandraPropertyReader propertiesCache = CassandraPropertyReader.getInstance();
+    private static final CassandraPropertyReader propertiesCache = new CassandraPropertyReader();
 
     public static String getPreparedStatement(String keyspaceName, String tableName, Map<String, Object> map) {
         StringBuilder query = new StringBuilder();

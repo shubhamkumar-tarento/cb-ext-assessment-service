@@ -9,7 +9,6 @@ import com.igot.cb.common.util.Constants;
 import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -24,8 +23,14 @@ import java.util.Map;
 public class OutboundRequestHandlerServiceImpl {
     private Logger log = LoggerFactory.getLogger(OutboundRequestHandlerServiceImpl.class);
 
-    @Autowired
-    private RestTemplate restTemplate;
+    private static final String ERROR_RECEIVED_LOG = "Error received: {}";
+    private static final String ERROR_RESPONSE_LOG = "Error Response: {}";
+
+    private final RestTemplate restTemplate;
+
+    public OutboundRequestHandlerServiceImpl(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
 
     /**
@@ -51,13 +56,15 @@ public class OutboundRequestHandlerServiceImpl {
                         new TypeReference<HashMap<String, Object>>() {
                         });
             } catch (Exception e1) {
+                // Body is not JSON; leave response null and fall through to the error log below.
             }
-            log.error("Error received: " + e.getResponseBodyAsString(), e);
+            log.error(ERROR_RECEIVED_LOG, e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             log.error(String.valueOf(e));
             try {
-                log.warn("Error Response: " + mapper.writeValueAsString(response));
+                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
             } catch (Exception e1) {
+                // Response could not be serialised for logging; nothing further to report.
             }
         }
         return response;
@@ -71,7 +78,6 @@ public class OutboundRequestHandlerServiceImpl {
     public Object fetchUsingGetWithHeaders(String uri, Map<String, String> headersValues) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        ResponseEntity<Map> response = null;
         try {
             if (log.isDebugEnabled()) {
                 StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
@@ -81,13 +87,10 @@ public class OutboundRequestHandlerServiceImpl {
             }
             HttpHeaders headers = new HttpHeaders();
             if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach((k, v) -> headers.set(k, v));
+                headersValues.forEach(headers::set);
             }
-            HttpEntity entity = new HttpEntity(headers);
-            response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
-            return response.getBody();
-        } catch (HttpClientErrorException e) {
-            log.error(String.valueOf(e));
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            return restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class).getBody();
         } catch (Exception e) {
             log.error(String.valueOf(e));
         }
@@ -99,7 +102,7 @@ public class OutboundRequestHandlerServiceImpl {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach((k, v) -> headers.set(k, v));
+                headersValues.forEach(headers::set);
             }
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Object> entity = new HttpEntity<>(request, headers);
@@ -118,7 +121,7 @@ public class OutboundRequestHandlerServiceImpl {
             } catch (Exception e1) {
                 return Collections.emptyMap();
             }
-            log.error("Error received: " + e.getResponseBodyAsString(), e);
+            log.error(ERROR_RECEIVED_LOG, e.getResponseBodyAsString(), e);
         }
         if (response == null) {
             return MapUtils.EMPTY_SORTED_MAP;
@@ -128,6 +131,9 @@ public class OutboundRequestHandlerServiceImpl {
 
 
     private void logDetails(String uri, Object objectDetails) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
         try {
             StringBuilder str = new StringBuilder(this.getClass().getCanonicalName()).append(".fetchResult")
                     .append(System.lineSeparator());
@@ -136,6 +142,7 @@ public class OutboundRequestHandlerServiceImpl {
                     .append(System.lineSeparator());
             log.debug(str.toString());
         } catch (JsonProcessingException je) {
+            // Details could not be serialised; skip this debug line rather than fail the request.
         }
     }
 
@@ -146,7 +153,7 @@ public class OutboundRequestHandlerServiceImpl {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach((k, v) -> headers.set(k, v));
+                headersValues.forEach(headers::set);
             }
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Object> entity = new HttpEntity<>(request, headers);
@@ -169,13 +176,15 @@ public class OutboundRequestHandlerServiceImpl {
                         new TypeReference<HashMap<String, Object>>() {
                         });
             } catch (Exception e1) {
+                // Body is not JSON; leave response null and fall through to the error log below.
             }
-            log.error("Error received: " + hce.getResponseBodyAsString(), hce);
+            log.error(ERROR_RECEIVED_LOG, hce.getResponseBodyAsString(), hce);
         } catch(JsonProcessingException e) {
             log.error(String.valueOf(e));
             try {
-                log.warn("Error Response: " + mapper.writeValueAsString(response));
+                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
             } catch (Exception e1) {
+                // Response could not be serialised for logging; nothing further to report.
             }
         }
         return response;
@@ -188,7 +197,7 @@ public class OutboundRequestHandlerServiceImpl {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach((k, v) -> headers.set(k, v));
+                headersValues.forEach(headers::set);
             }
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Object> entity = new HttpEntity<>(headers);
@@ -210,13 +219,15 @@ public class OutboundRequestHandlerServiceImpl {
                         new TypeReference<HashMap<String, Object>>() {
                         });
             } catch (Exception e1) {
+                // Body is not JSON; leave response null and fall through to the error log below.
             }
-            log.error("Error received: " + hce.getResponseBodyAsString(), hce);
+            log.error(ERROR_RECEIVED_LOG, hce.getResponseBodyAsString(), hce);
         } catch(JsonProcessingException e) {
             log.error(String.valueOf(e));
             try {
-                log.warn("Error Response: " + mapper.writeValueAsString(response));
+                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
             } catch (Exception e1) {
+                // Response could not be serialised for logging; nothing further to report.
             }
         }
         return response;

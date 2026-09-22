@@ -11,7 +11,7 @@ class CassandraPropertyReaderTest {
 
     @Test
     void testReadPropertyReturnsValueIfExists() throws Exception {
-        CassandraPropertyReader reader = CassandraPropertyReader.getInstance();
+        CassandraPropertyReader reader = new CassandraPropertyReader();
         // Inject test property
         Field propertiesField = CassandraPropertyReader.class.getDeclaredField("properties");
         propertiesField.setAccessible(true);
@@ -24,7 +24,7 @@ class CassandraPropertyReaderTest {
 
     @Test
     void testReadPropertyReturnsKeyIfNotExists() {
-        CassandraPropertyReader reader = CassandraPropertyReader.getInstance();
+        CassandraPropertyReader reader = new CassandraPropertyReader();
         assertEquals("unknown.key", reader.readProperty("unknown.key"));
     }
 
@@ -43,7 +43,7 @@ class CassandraPropertyReaderTest {
             fileNameField.set(null, "nonexistent.properties");
 
             // Try to get a new instance (will throw)
-            assertThrows(CassandraPropertyReaderException.class, CassandraPropertyReader::getInstance);
+            assertThrows(CassandraPropertyReaderException.class, CassandraPropertyReader::new);
         } catch (NoSuchFieldException | IllegalAccessException ignored) {
             // Skipped: cannot change final static field in this Java version
         }

@@ -20,11 +20,4 @@ class ApplicationLogicErrorTest {
         assertEquals("error with cause", ex.getMessage());
         assertEquals(cause, ex.getCause());
     }
-
-    @Test
-    void testSetMessage() {
-        ApplicationLogicError ex = new ApplicationLogicError("initial");
-        ex.setMessage("updated");
-        assertEquals("updated", ex.getMessage());
-    }
 }

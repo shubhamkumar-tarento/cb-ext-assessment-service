@@ -14,7 +14,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.datastax.oss.driver.api.core.CqlSession;
@@ -35,13 +34,17 @@ import com.datastax.oss.driver.api.querybuilder.update.UpdateWithAssignments;
 import com.igot.cb.common.helper.cassandra.CassandraConnectionManager;
 import com.igot.cb.common.model.SBApiResponse;
 import com.igot.cb.common.util.Constants;
+import com.igot.cb.core.exception.ApplicationLogicError;
 
 @Component
 public class CassandraOperationImpl implements CassandraOperation {
 	private Logger logger = LoggerFactory.getLogger(CassandraOperationImpl.class);
 
-	@Autowired
-	CassandraConnectionManager connectionManager;
+	final CassandraConnectionManager connectionManager;
+
+	public CassandraOperationImpl(CassandraConnectionManager connectionManager) {
+		this.connectionManager = connectionManager;
+	}
 
 	@Override
 	public List<Map<String, Object>> getRecordsByProperties(String keyspaceName, String tableName,
@@ -145,7 +148,7 @@ public class CassandraOperationImpl implements CassandraOperation {
 		return response;
 	}
 
-	public Map<String, Object> getRecordsByPropertiesWithPagination(String keyspaceName, String tableName, Map<String, Object> propertyMap, List<String> fields, int limit, String updatedOn, String key) {
+	public Map<String, Object> getRecordsByPropertiesWithPagination() {
 		return Map.of();
 	}
 
@@ -167,10 +170,9 @@ public class CassandraOperationImpl implements CassandraOperation {
 			response.put(Constants.RESPONSE, Constants.SUCCESS);
 		} catch (Exception e) {
 			String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
-			logger.error(errMsg, e);
 			response.put(Constants.RESPONSE, Constants.FAILED);
 			response.put(Constants.ERROR_MESSAGE, errMsg);
-			throw e;
+			throw new ApplicationLogicError(errMsg, e);
 		}
 		return response;
 	}

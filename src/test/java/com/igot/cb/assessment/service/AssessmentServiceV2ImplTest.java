@@ -10,7 +10,6 @@ import com.igot.cb.common.util.AccessTokenValidator;
 import com.igot.cb.common.util.CbExtAssessmentServerProperties;
 import com.igot.cb.common.util.Constants;
 import com.igot.cb.core.producer.Producer;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -71,6 +70,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: readAssessment returns success
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessment_success() throws JsonProcessingException {
         when(serverProperties.getAssessmentLevelParams()).thenReturn(Collections.emptyList());
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
@@ -109,6 +109,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: submitAssessment returns success
     @Test
+    @SuppressWarnings("unchecked")
     void testSubmitAssessment_success() throws Exception {
         when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("30");
 
@@ -191,6 +192,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: readQuestionList returns success
     @Test
+    @SuppressWarnings("unchecked")
     void testReadQuestionList_success() throws JsonProcessingException {
         Map<String, Object> section = new HashMap<>();
         section.put(Constants.IDENTIFIER, "section1");
@@ -267,6 +269,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: retakeAssessment returns success
     @Test
+    @SuppressWarnings("unchecked")
     void testRetakeAssessment_success() throws Exception {
         Map<String, Object> assessmentHierarchy = new HashMap<>();
         assessmentHierarchy.put(Constants.PRIMARY_CATEGORY, "Assessment");
@@ -309,7 +312,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testCalculateSectionFinalResults() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         // Prepare dummy section results
         Map<String, Object> section1 = new HashMap<>();
@@ -349,7 +352,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testWriteDataToDatabaseAndTriggerKafkaEvent() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         // Mock dependencies
         AssessmentRepository mockRepo = mock(AssessmentRepository.class);
@@ -404,7 +407,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testCalculateAssessmentRetakeCount() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         Map<String, Object> entry1 = new HashMap<>();
         entry1.put(Constants.SUBMIT_ASSESSMENT_RESPONSE, "response1");
@@ -426,7 +429,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testCreateResponseMapWithProperStructure_WithResultMap() {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         Map<String, Object> hierarchySection = new HashMap<>();
         hierarchySection.put(Constants.IDENTIFIER, "section1");
@@ -458,7 +461,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testCreateResponseMapWithProperStructure_EmptyResultMap() {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         Map<String, Object> hierarchySection = new HashMap<>();
         hierarchySection.put(Constants.IDENTIFIER, "section2");
@@ -484,7 +487,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testCalculateAssessmentFinalResults() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         Map<String, Object> assessmentLevelResult = new HashMap<>();
         assessmentLevelResult.put(Constants.RESULT, 85.0);
@@ -514,8 +517,9 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadSectionLevelParams_PopulatesSectionDetailsCorrectly() throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         CbExtAssessmentServerProperties mockProps = mock(CbExtAssessmentServerProperties.class);
         List<String> sectionParams = List.of(Constants.IDENTIFIER, Constants.MINIMUM_PASS_PERCENTAGE, Constants.MAX_QUESTIONS);
@@ -569,6 +573,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessmentLevelData_withValidParams() throws Exception {
         Map<String, Object> question = new HashMap<>();
         question.put(Constants.IDENTIFIER, "q1");
@@ -583,7 +588,7 @@ class AssessmentServiceV2ImplTest {
         when(serverProperties.getAssessmentLevelParams()).thenReturn(List.of(Constants.IDENTIFIER));
         when(serverProperties.getAssessmentSectionParams()).thenReturn(Collections.emptyList());
 
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         Field propsField = AssessmentServiceV2Impl.class.getDeclaredField("serverProperties");
         propsField.setAccessible(true);
         propsField.set(service, serverProperties);
@@ -595,8 +600,9 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessmentLevelData_withEmptyParams() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         // Inject mock serverProperties
         Field propsField = AssessmentServiceV2Impl.class.getDeclaredField("serverProperties");
@@ -677,8 +683,9 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testValidateQuestionListAPI_validAndInvalidCases() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         // Inject mocks
         Field propsField = AssessmentServiceV2Impl.class.getDeclaredField("serverProperties");
@@ -739,8 +746,9 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testGetQuestionIdList_variousCases() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
 
         // Case 1: Valid request with identifiers
         Map<String, Object> requestBody = new HashMap<>();
@@ -780,64 +788,9 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
-    void testWriteDataToDatabaseAndTriggerKafkaEvent_success() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
-
-        // Mock dependencies
-        AssessmentRepository mockRepo = mock(AssessmentRepository.class);
-        Producer mockProducer = mock(Producer.class);
-        AssessmentUtilServiceV2 mockUtil = mock(AssessmentUtilServiceV2.class);
-        CbExtAssessmentServerProperties mockProps = mock(CbExtAssessmentServerProperties.class);
-
-        // Inject mocks via reflection
-        Field repoField = AssessmentServiceV2Impl.class.getDeclaredField("assessmentRepository");
-        repoField.setAccessible(true);
-        repoField.set(service, mockRepo);
-
-        Field producerField = AssessmentServiceV2Impl.class.getDeclaredField("kafkaProducer");
-        producerField.setAccessible(true);
-        producerField.set(service, mockProducer);
-
-        Field utilField = AssessmentServiceV2Impl.class.getDeclaredField("assessUtilServ");
-        utilField.setAccessible(true);
-        utilField.set(service, mockUtil);
-
-        Field propsField = AssessmentServiceV2Impl.class.getDeclaredField("serverProperties");
-        propsField.setAccessible(true);
-        propsField.set(service, mockProps);
-
-        // Prepare input data
-        Map<String, Object> submitRequest = new HashMap<>();
-        submitRequest.put(Constants.IDENTIFIER, "assess1");
-        submitRequest.put(Constants.USER_ID, "user1");
-
-        Map<String, Object> questionSetFromAssessment = new HashMap<>();
-        questionSetFromAssessment.put(Constants.START_TIME, Instant.now());
-
-        Map<String, Object> result = new HashMap<>();
-        result.put(Constants.OVERALL_RESULT, 80.0);
-
-        when(mockUtil.parseStartTimeToInstant(any())).thenReturn(Instant.now());
-        when(mockRepo.updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any())).thenReturn(true);
-        when(mockProps.getAssessmentSubmitTopic()).thenReturn("topic");
-
-        // Call private method via reflection
-        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod(
-                "writeDataToDatabaseAndTriggerKafkaEvent",
-                Map.class, String.class, Map.class, Map.class, String.class
-        );
-        method.setAccessible(true);
-        method.invoke(service, submitRequest, "user1", questionSetFromAssessment, result, "Assessment");
-
-        // Verify interactions
-        verify(mockRepo, times(1)).updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any());
-        verify(mockProducer, times(1)).push(eq("topic"), any());
-    }
-
-    @Test
     void testSubmitAssessment_FailedSubmission() throws Exception {
         // Prepare mocks and inject them
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         Field repoField = AssessmentServiceV2Impl.class.getDeclaredField("assessmentRepository");
         repoField.setAccessible(true);
         repoField.set(service, assessmentRepository);
@@ -919,6 +872,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testFetchReadHierarchyDetails_withCacheHit() throws Exception {
         Map<String, Object> assessmentAllDetail = new HashMap<>();
         String assessmentJson = "{\"primaryCategory\":\"Assessment\"}";
@@ -936,7 +890,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
-    void testReadAssessment_hierarchyFetchFails() throws Exception {
+    void testReadAssessment_hierarchyFetchFails() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
         when(redisCacheMgr.getCache(anyString())).thenReturn("");
         SBApiResponse response = assessmentServiceV2.readAssessment(ASSESSMENT_ID, TOKEN);
@@ -946,6 +900,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: PRACTICE_QUESTION_SET category
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessment_practiceQuestionSet() throws Exception {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
         Map<String, Object> assessmentHierarchy = new HashMap<>();
@@ -961,6 +916,7 @@ class AssessmentServiceV2ImplTest {
 
     // -ve: DB update fails on first read
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessment_dbUpdateFails() throws Exception {
         when(serverProperties.getAssessmentLevelParams()).thenReturn(Collections.emptyList());
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
@@ -980,6 +936,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: Existing assessment, NOT_SUBMITTED, within time
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessment_existingNotSubmittedWithinTime() throws Exception {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
         Map<String, Object> assessmentHierarchy = new HashMap<>();
@@ -1001,6 +958,7 @@ class AssessmentServiceV2ImplTest {
 
     // +ve: Existing assessment, SUBMITTED or end time exceeded
     @Test
+    @SuppressWarnings("unchecked")
     void testReadAssessment_existingSubmittedOrEndTimeExceeded() throws Exception {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
         Map<String, Object> assessmentHierarchy = new HashMap<>();
@@ -1023,7 +981,7 @@ class AssessmentServiceV2ImplTest {
 
     @Test
     void testWriteDataToDatabaseAndTriggerKafkaEvent_dbUpdateFails() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         AssessmentRepository mockRepo = mock(AssessmentRepository.class);
         Producer mockProducer = mock(Producer.class);
         AssessmentUtilServiceV2 mockUtil = mock(AssessmentUtilServiceV2.class);
@@ -1064,7 +1022,7 @@ class AssessmentServiceV2ImplTest {
     // -ve: Null start time, should not update DB or push Kafka
     @Test
     void testWriteDataToDatabaseAndTriggerKafkaEvent_nullStartTime() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         AssessmentRepository mockRepo = mock(AssessmentRepository.class);
         Producer mockProducer = mock(Producer.class);
         AssessmentUtilServiceV2 mockUtil = mock(AssessmentUtilServiceV2.class);
@@ -1102,7 +1060,7 @@ class AssessmentServiceV2ImplTest {
     // -ve: Exception thrown by repository
     @Test
     void testWriteDataToDatabaseAndTriggerKafkaEvent_repoThrowsException() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         AssessmentRepository mockRepo = mock(AssessmentRepository.class);
         Producer mockProducer = mock(Producer.class);
         AssessmentUtilServiceV2 mockUtil = mock(AssessmentUtilServiceV2.class);
@@ -1281,7 +1239,7 @@ class AssessmentServiceV2ImplTest {
     // Question set from DB/cache is null
     @Test
     void testSubmitAssessment_questionSetFromDbIsNull() throws Exception {
-        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl();
+        AssessmentServiceV2Impl service = new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository, redisCacheMgr, outboundRequestHandlerService, mapper, accessTokenValidator);
         Field repoField = AssessmentServiceV2Impl.class.getDeclaredField("assessmentRepository");
         repoField.setAccessible(true);
         repoField.set(service, assessmentRepository);
@@ -1339,6 +1297,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadQuestionList_cacheHitReturnsAssessmentData() throws Exception {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.ASSESSMENT_ID_KEY, "assess1");
@@ -1390,6 +1349,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadQuestionList_allQuestionsMissingInCacheAndDb() throws JsonProcessingException {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.ASSESSMENT_ID_KEY, "assess1");
@@ -1433,6 +1393,7 @@ class AssessmentServiceV2ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadQuestionList_partialQuestionsFound() throws Exception {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.ASSESSMENT_ID_KEY, "assess1");

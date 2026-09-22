@@ -141,10 +141,12 @@ class RedisCacheMgrTest {
 
     @Test
     void testPutCacheAsStringArray() {
+        String[] values = {"a", "b"};
         when(jedis.sadd(anyString(), any(String[].class))).thenReturn(1L);
         when(jedis.expire(anyString(), anyInt())).thenReturn(1L);
-        redisCacheMgr.putCacheAsStringArray("key", new String[]{"a", "b"}, 100);
-        // No exception means pass
+        redisCacheMgr.putCacheAsStringArray("key", values, 100);
+        verify(jedis).sadd(Constants.REDIS_COMMON_KEY + "key", values);
+        verify(jedis).expire(Constants.REDIS_COMMON_KEY + "key", 100L);
     }
 
     @Test
@@ -152,6 +154,7 @@ class RedisCacheMgrTest {
         when(jedis.set(anyString(), anyString())).thenReturn("OK");
         when(jedis.expire(anyString(), anyInt())).thenReturn(1L);
         redisCacheMgr.putInQuestionCache("key", "val");
+        verify(jedis).set(Constants.REDIS_COMMON_KEY + "key", "\"val\"");
     }
 
     @Test
@@ -190,7 +193,7 @@ class RedisCacheMgrTest {
     }
 
     @Test
-    void testPutCache_Success() throws Exception {
+    void testPutCache_Success() {
         when(jedis.set(anyString(), anyString())).thenReturn("OK");
         when(jedis.expire(anyString(), anyInt())).thenReturn(1L);
         redisCacheMgr.putCache("key", Map.of("a", 1), 100);
@@ -199,10 +202,11 @@ class RedisCacheMgrTest {
     }
 
     @Test
-    void testPutCache_Exception() throws Exception {
+    void testPutCache_Exception() {
         doThrow(new RuntimeException("fail")).when(jedis).set(anyString(), anyString());
         redisCacheMgr.putCache("key", Map.of("a", 1), 100);
-        // Should log error, no exception thrown
+        // the failure is swallowed and logged, so the TTL is never applied
+        verify(jedis, never()).expire(anyString(), anyLong());
     }
 
     @Test
@@ -214,7 +218,7 @@ class RedisCacheMgrTest {
     }
 
     @Test
-    void testPutInQuestionCache_Success() throws Exception {
+    void testPutInQuestionCache_Success() {
         when(jedis.set(anyString(), anyString())).thenReturn("OK");
         when(jedis.expire(anyString(), anyInt())).thenReturn(1L);
         redisCacheMgr.putInQuestionCache("key", Map.of("b", 2));
@@ -296,7 +300,8 @@ class RedisCacheMgrTest {
     void testMget_Exception() {
         when(jedis.mget(any(String[].class))).thenThrow(new RuntimeException("fail"));
         List<String> result = redisCacheMgr.mget(List.of("1", "2"));
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test
@@ -335,7 +340,7 @@ class RedisCacheMgrTest {
 
     @Test
     void testHget_Success() {
-        when(jedis.hmget(eq("key"), eq("f1"), eq("f2"))).thenReturn(List.of("v1", "v2"));
+        when(jedis.hmget("key", "f1", "f2")).thenReturn(List.of("v1", "v2"));
         List<String> result = redisCacheMgr.hget("key", 1, "f1", "f2");
         assertEquals(List.of("v1", "v2"), result);
         verify(jedis).select(1);
@@ -439,7 +444,8 @@ class RedisCacheMgrTest {
     void testPutCacheAsStringArray_Exception() {
         doThrow(new RuntimeException("fail")).when(jedis).sadd(anyString(), any(String[].class));
         redisCacheMgr.putCacheAsStringArray("key", new String[]{"v1", "v2"}, 10);
-        // Should log error, no exception thrown
+        // the failure is swallowed and logged, so the TTL is never applied
+        verify(jedis, never()).expire(anyString(), anyLong());
     }
 
     @Test
@@ -455,6 +461,7 @@ class RedisCacheMgrTest {
     void testGetSetFromCacheAsCommaSeparated_Exception() {
         when(jedis.smembers("key")).thenThrow(new RuntimeException("fail"));
         Set<String> result = redisCacheMgr.getSetFromCacheAsCommaSeparated("key");
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 }

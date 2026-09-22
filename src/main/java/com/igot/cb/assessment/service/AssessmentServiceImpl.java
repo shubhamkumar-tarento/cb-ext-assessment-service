@@ -16,12 +16,14 @@ import com.igot.cb.core.exception.ApplicationLogicError;
 import org.apache.coyote.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.ParseException;
 import java.util.*;
 
 @Service
@@ -36,31 +38,34 @@ public class AssessmentServiceImpl implements AssessmentService {
 
     private ObjectMapper mapper = new ObjectMapper();
 
-    @Autowired
     AssessmentRepository repository;
 
-    @Autowired
     ContentService contentService;
 
-    @Autowired
     UserUtilityService userUtilService;
 
-    @Autowired
     AssessmentUtilService assessUtilServ;
 
-    @Autowired
     OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
 
-    @Autowired
     CbExtAssessmentServerProperties extServerProperties;
 
-    @Autowired
     RedisCacheMgr redisCacheMgr;
+
+    public AssessmentServiceImpl(AssessmentRepository repository, ContentService contentService, UserUtilityService userUtilService, AssessmentUtilService assessUtilServ, OutboundRequestHandlerServiceImpl outboundRequestHandlerService, CbExtAssessmentServerProperties extServerProperties, RedisCacheMgr redisCacheMgr) {
+        this.repository = repository;
+        this.contentService = contentService;
+        this.userUtilService = userUtilService;
+        this.assessUtilServ = assessUtilServ;
+        this.outboundRequestHandlerService = outboundRequestHandlerService;
+        this.extServerProperties = extServerProperties;
+        this.redisCacheMgr = redisCacheMgr;
+    }
 
     @Override
     public Map<String, Object> submitAssessment(String rootOrg, AssessmentSubmissionDTO data, String userId)
-            throws Exception {
-        logger.debug("Submit Assessment: rootOrg: " + rootOrg + ", userId: " + userId + ", data: " + data.toString());
+            throws IOException, ParseException {
+        logger.debug("Submit Assessment: rootOrg: {}, userId: {}, data: {}", rootOrg, userId, data);
         // Check User exists
         if (!userUtilService.validateUser(rootOrg, userId)) {
             throw new BadRequestException("Invalid UserId.");
@@ -68,7 +73,6 @@ public class AssessmentServiceImpl implements AssessmentService {
 
         Map<String, Object> ret = new HashMap<>();
 
-        // TODO - Need to get the Assessment ContentMeta Data
         // Get the assessment-key.json file. Current version has both the answers
 
         Map<String, Object> resultMap = assessUtilServ.validateAssessment(data.getQuestions());
@@ -99,7 +103,7 @@ public class AssessmentServiceImpl implements AssessmentService {
             persist.put(Constants.PARENT_CONTENT_TYPE, "");
         }
 
-        logger.debug("Trying to persist assessment data -> " + persist.toString());
+        logger.debug("Trying to persist assessment data -> {}", persist);
         // insert into assessment table
         repository.insertQuizOrAssessment(persist, data.isAssessment());
 
@@ -114,8 +118,7 @@ public class AssessmentServiceImpl implements AssessmentService {
     }
 
     @Override
-    public Map<String, Object> getAssessmentByContentUser(String rootOrg, String courseId, String userId)
-            throws Exception {
+    public Map<String, Object> getAssessmentByContentUser(String rootOrg, String courseId, String userId) {
         Map<String, Object> result = new TreeMap<>();
         try {
             // get all submission data from cassandra
@@ -181,9 +184,8 @@ public class AssessmentServiceImpl implements AssessmentService {
     }
 
     @Override
-    public Map<String, Object> submitAssessmentByIframe(String rootOrg, Map<String, Object> request) throws Exception {
-        // TODO Auto-generated method stub
-        return null;
+    public Map<String, Object> submitAssessmentByIframe(String rootOrg, Map<String, Object> request) {
+        return Collections.emptyMap();
     }
 
     // A method to Format Data in the FrontEndFormat
@@ -192,7 +194,7 @@ public class AssessmentServiceImpl implements AssessmentService {
         for (Map<String, Object> map : result) {
             Map<String, Object> assessmentData = new HashMap<>();
             String res = map.get("result_percent").toString();
-            assessmentData.put(RESULT, new BigDecimal(res).setScale(2, BigDecimal.ROUND_UP));
+            assessmentData.put(RESULT, new BigDecimal(res).setScale(2, RoundingMode.UP));
             assessmentData.put("correctlyAnswered", map.get("correct_count"));
             assessmentData.put("wronglyAnswered", map.get("incorrect_count"));
             assessmentData.put("notAttempted", map.get("not_answered_count"));
@@ -238,7 +240,7 @@ public class AssessmentServiceImpl implements AssessmentService {
                         }
                     }
                 }else {
-                    logger.error("Error while fetching assessment content: " + response.getResponseCode());
+                    logger.error("Error while fetching assessment content: {}", response.getResponseCode());
                     result.put(Constants.STATUS, Constants.FAILED);
                     result.put(Constants.ERROR, "Error while fetching assessment content");
                 }

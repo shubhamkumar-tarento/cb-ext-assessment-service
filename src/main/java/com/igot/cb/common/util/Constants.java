@@ -110,8 +110,9 @@ public class Constants {
     public static final boolean FETCH_ON_LEVEL = false;
     public static final boolean SKIP_ACCESS_CHECK = true;
     public static final List<String> MINIMUL_FIELDS = Collections
-            .unmodifiableList(Arrays.asList("identifier", "duration", "downloadUrl", "description", "mimeType",
-                    "artifactUrl", "name", STATUS, "resourceType", "categoryType", "category"));
+            .unmodifiableList(Arrays.asList(IDENTIFIER, Constants.DURATION, "downloadUrl",
+                    Constants.DESCRIPTION, "mimeType", "artifactUrl", "name", STATUS,
+                    Constants.RESOURCE_TYPE, "categoryType", Constants.CATEGORY));
     public static final String FETCH_RESULT_CONSTANT = ".fetchResult:";
     public static final String URI_CONSTANT = "URI: ";
     public static final String REQUEST_CONSTANT = "Request: ";
@@ -236,7 +237,7 @@ public class Constants {
     public static final String TABLE_USER_ASSESSMENT_TIME = "user_assessment_time";
     public static final String SHA_256_WITH_RSA = "SHA256withRSA";
     public static final String SUB = "sub";
-    public static final String _UNAUTHORIZED = "Unauthorized";
+    public static final String UNAUTHORIZED_USER_ID = "Unauthorized";
     public static final String DOT_SEPARATOR = ".";
     public static final String ACCESS_TOKEN_PUBLICKEY_BASEPATH = "accesstoken.publickey.basepath";
     public static final String TABLE_ORG_AUDIT = "org_audit";
@@ -348,7 +349,7 @@ public class Constants {
     public static final String NOTIFICATIONS = "notifications";
     public static final String CORE_CONNECTIONS_PER_HOST_FOR_LOCAL = "coreConnectionsPerHostForLocal";
     public static final String CORE_CONNECTIONS_PER_HOST_FOR_REMOTE = "coreConnectionsPerHostForRemote";
-    public static final String MAX_CONNECTIONS_PER_HOST_FOR_LOCAl = "maxConnectionsPerHostForLocal";
+    public static final String MAX_CONNECTIONS_PER_HOST_FOR_LOCAL = "maxConnectionsPerHostForLocal";
     public static final String MAX_CONNECTIONS_PER_HOST_FOR_REMOTE = "maxConnectionsPerHostForRemote";
     public static final String MAX_REQUEST_PER_CONNECTION = "maxRequestsPerConnection";
     public static final String HEARTBEAT_INTERVAL = "heartbeatIntervalSeconds";
@@ -360,10 +361,10 @@ public class Constants {
     public static final String INCOMPLETE_COURSES_MAIL_SUBJECT = "Complete the courses you started";
     public static final String COURSE = "Course";
     public static final String COURSE_KEYWORD = "course";
-    public static final String _URL = "_url";
+    public static final String URL_SUFFIX = "_url";
     public static final String THUMBNAIL = "_thumbnail";
-    public static final String _NAME = "_name";
-    public static final String _DURATION = "_duration";
+    public static final String NAME_SUFFIX = "_name";
+    public static final String DURATION_SUFFIX = "_duration";
     public static final String SEND_NOTIFICATION_PROPERTIES = "send-notification";
     public static final String NOTIFICATION_HOST = "notification.service.host";
     public static final String NOTIFICATION_ENDPOINT = "notification.event.endpoint";
@@ -541,11 +542,11 @@ public class Constants {
     public static final String DATE_CREATED_ON = "dateCreatedOn";
     public static final String DATE_UPDATE_ON = "dateUpdatedOn";
     public static final String INITIATED_CAPITAL = "INITIATED";
-    public static final List<String> COURSE_REMINDER_EMAIL_FIELDS = Arrays.asList(RATINGS_USER_ID, BATCH_ID_COLUMN,
+    public static final List<String> COURSE_REMINDER_EMAIL_FIELDS = List.of(RATINGS_USER_ID, BATCH_ID_COLUMN,
             COURSE_ID_COLUMN, COMPLETION_PERCENTAGE_COLUMN, LAST_ACCESS_TIME);
     public static final String BATCHES = "batches";
     public static final String NO_OF_COURSES = "noOfCourses";
-    public static final String _DESCRIPTION = "_description";
+    public static final String DESCRIPTION_SUFFIX = "_description";
     public static final String EMAIL_TYPE = "emailtype";
     public static final String NEW_COURSES_EMAIL = "New Courses Email";
     public static final String EMAIL_RECORD_TABLE = "email_record";
@@ -562,9 +563,7 @@ public class Constants {
     public static final String ORGANISATIONS = "organisations";
 
     public static final String CIPHER_ALGORITHM = "AES";
-    public static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
-            'K', 't', 'e', 'y' };
-    public static final List<String> DECRYPTED_FIELDS = Arrays.asList("phone", "email");
+    public static final List<String> DECRYPTED_FIELDS = List.of(PHONE, EMAIL);
     public static final String CREATED_FOR = "createdFor";
     public static final String COURSE_ORG_ID = "courseOrgId";
     public static final String COURSE_ORG_NAME = "courseOrgName";
@@ -636,13 +635,13 @@ public class Constants {
     public static final String RETAKE_ATTEMPTS_CONSUMED = "attemptsMade";
     public static final String API_RETAKE_ASSESSMENT_GET = "api.assessmment.attempt";
 
-    public static final List<String> USER_ENROLMENT_REPORT_FIELDS = Arrays.asList(USER_ID, FIRSTNAME, EMAIL,
+    public static final List<String> USER_ENROLMENT_REPORT_FIELDS = List.of(USER_ID, FIRSTNAME, EMAIL,
             PHONE, ROOT_ORG_ID, CHANNEL);
 
-    public static final List<String> COURSE_ENROLMENT_REPORT_FIELDS = Arrays.asList(COURSE_ID, NAME, COURSE_ORG_ID,
+    public static final List<String> COURSE_ENROLMENT_REPORT_FIELDS = List.of(COURSE_ID, NAME, COURSE_ORG_ID,
             COURSE_ORG_NAME);
 
-    public static final List<String> USER_ENROLMENT_COMMON_FIELDS = Arrays.asList(STATUS, COMPLETION_PERCENTAGE);
+    public static final List<String> USER_ENROLMENT_COMMON_FIELDS = List.of(STATUS, COMPLETION_PERCENTAGE);
 
     public static final String CONTEXT_TYPE = "contextType";
     public static final String CONTEXT_NAME = "contextName";
@@ -670,7 +669,6 @@ public class Constants {
     public static final String SUCCESSFUL_UPPERCASE = "SUCCESSFUL";
     public static final String FAILED_UPPERCASE = "FAILED";
     public static final String STATUS_IN_PROGRESS_UPPERCASE = "IN-PROGRESS";
-    public static final String LOCAL_BASE_PATH= "/tmp/";
     public static final String USER_CREATION_FAILED = "User Creation Failed";
     public static final String TOTAL_RECORDS = "totalRecords";
     public static final String SUCCESSFUL_RECORDS_COUNT = "successfulRecordsCount";
@@ -1287,7 +1285,7 @@ public class Constants {
     public static final String PROGRAM_COORDINATOR = "PROGRAM_COORDINATOR";
     public static final String REPORT_REQUESTER_ERR_MSG = "Report requester is invalid";
     public static final String IS_DATA_AVAILABLE = "isDataAvailable";
-    public static final List<String> BP_REPORT_REQUESTER_ROLES = Arrays.asList(MDO_ADMIN, MDO_LEADER, PROGRAM_COORDINATOR);
+    public static final List<String> BP_REPORT_REQUESTER_ROLES = List.of(MDO_ADMIN, MDO_LEADER, PROGRAM_COORDINATOR);
     public static final String REGISTRATION_LINK_CSR = "registrationLink";
     public static final String QR_REGISTRATION_LINK_CSR = "qrRegistrationLink";
     public static final String FRAMEWORK_ID_KEY = "frameworkid";
@@ -1333,7 +1331,7 @@ public class Constants {
     public static final String USER_NON_RELEVANT_RECOMMENDATIONS = "user_non_relevant_recommendations";
     public static final String API_COURSE_RECOMMENDATION_READ = "api.course.recommendation.read";
     public static final String API_COURSE_RECOMMENDATION_SAVE = "api.course.recommendation.save";
-    public static final String USER_ID_COURSE_IDs_DOESNT_EXIST = "User Id and Course Ids doesn't exist";
+    public static final String USER_ID_COURSE_IDS_DOESNT_EXIST = "User Id and Course Ids doesn't exist";
     public static final String CREATED_ON_KEY = "createdon";
     public static final String COURSE_RECOMMENDATION = "courserecommendations";
     public static final String UPDATED_ON_KEY = "updatedon";

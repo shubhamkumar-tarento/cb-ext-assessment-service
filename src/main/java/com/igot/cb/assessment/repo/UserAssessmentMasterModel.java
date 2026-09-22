@@ -108,28 +108,96 @@ public class UserAssessmentMasterModel {
 		return userId;
 	}
 
-	public void setUser_id(String userId) {
+	public void setUserId(String userId) {
 		this.userId = userId;
 	}
 
-	public UserAssessmentMasterModel(UserAssessmentMasterPrimaryKeyModel primaryKey, Integer correctCount,
-                                     Date dateCreated, Integer incorrectCount, Integer notAnsweredCount, String parentContentType,
-                                     BigDecimal passPercent, String sourceId, String sourceTitle, String userId) {
-		super();
-		this.primaryKey = primaryKey;
-		this.correctCount = correctCount;
-		this.dateCreated = dateCreated;
-		this.incorrectCount = incorrectCount;
-		this.notAnsweredCount = notAnsweredCount;
-		this.parentContentType = parentContentType;
-		this.passPercent = passPercent;
-		this.sourceId = sourceId;
-		this.sourceTitle = sourceTitle;
-		this.userId = userId;
+	private UserAssessmentMasterModel(Builder builder) {
+		this.primaryKey = builder.primaryKey;
+		this.correctCount = builder.correctCount;
+		this.dateCreated = builder.dateCreated;
+		this.incorrectCount = builder.incorrectCount;
+		this.notAnsweredCount = builder.notAnsweredCount;
+		this.parentContentType = builder.parentContentType;
+		this.passPercent = builder.passPercent;
+		this.sourceId = builder.sourceId;
+		this.sourceTitle = builder.sourceTitle;
+		this.userId = builder.userId;
 	}
 
 	public UserAssessmentMasterModel() {
 		super();
+	}
+
+	public static Builder builder() {
+		return new Builder();
+	}
+
+	public static class Builder {
+		private UserAssessmentMasterPrimaryKeyModel primaryKey;
+		private Integer correctCount;
+		private Date dateCreated;
+		private Integer incorrectCount;
+		private Integer notAnsweredCount;
+		private String parentContentType;
+		private BigDecimal passPercent;
+		private String sourceId;
+		private String sourceTitle;
+		private String userId;
+
+		public Builder primaryKey(UserAssessmentMasterPrimaryKeyModel primaryKey) {
+			this.primaryKey = primaryKey;
+			return this;
+		}
+
+		public Builder correctCount(Integer correctCount) {
+			this.correctCount = correctCount;
+			return this;
+		}
+
+		public Builder dateCreated(Date dateCreated) {
+			this.dateCreated = dateCreated;
+			return this;
+		}
+
+		public Builder incorrectCount(Integer incorrectCount) {
+			this.incorrectCount = incorrectCount;
+			return this;
+		}
+
+		public Builder notAnsweredCount(Integer notAnsweredCount) {
+			this.notAnsweredCount = notAnsweredCount;
+			return this;
+		}
+
+		public Builder parentContentType(String parentContentType) {
+			this.parentContentType = parentContentType;
+			return this;
+		}
+
+		public Builder passPercent(BigDecimal passPercent) {
+			this.passPercent = passPercent;
+			return this;
+		}
+
+		public Builder sourceId(String sourceId) {
+			this.sourceId = sourceId;
+			return this;
+		}
+
+		public Builder sourceTitle(String sourceTitle) {
+			this.sourceTitle = sourceTitle;
+			return this;
+		}
+
+		public Builder userId(String userId) {
+			this.userId = userId;
+			return this;
+		}
+
+		public UserAssessmentMasterModel build() {
+			return new UserAssessmentMasterModel(this);
+		}
 	}
 
 	@Override

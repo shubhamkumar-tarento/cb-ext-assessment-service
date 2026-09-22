@@ -10,6 +10,9 @@ import java.util.*;
 
 public class ProjectUtil {
 
+    private ProjectUtil() {
+    }
+
     public static SBApiResponse createDefaultResponse(String api) {
         SBApiResponse response = new SBApiResponse();
         response.setId(api);

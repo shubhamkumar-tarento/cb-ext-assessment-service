@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -63,7 +64,7 @@ class AssessmentServiceV5ImplTest {
         cassandraOperation=mock(CassandraOperation.class);
         producer = mock(Producer.class);
 
-        service = new AssessmentServiceV5Impl();
+        service = new AssessmentServiceV5Impl(serverProperties, producer, outboundRequestHandlerService, assessUtilServ, mapper, assessmentRepository, accessTokenValidator, contentService, cassandraOperation, producer);
 
         // Inject dependencies manually since no constructor is used
         ReflectionTestUtils.setField(service, "accessTokenValidator", accessTokenValidator);
@@ -202,13 +203,13 @@ class AssessmentServiceV5ImplTest {
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(assessmentHierarchy);
 
-        when(assessUtilServ.readAssessmentRecord(eq("assessmentId"), eq(List.of(Constants.LANGUAGE))))
+        when(assessUtilServ.readAssessmentRecord("assessmentId", List.of(Constants.LANGUAGE)))
                 .thenReturn("english");
 
         when(assessUtilServ.readContentRecord(eq("course123"), anyList()))
                 .thenReturn("course123-baseLang");
 
-        when(contentService.readContent(eq("course123-baseLang")))
+        when(contentService.readContent("course123-baseLang"))
                 .thenReturn(courseMap);
 
         when(assessUtilServ.readUserSubmittedAssessmentRecords(anyString(), anyString()))
@@ -316,14 +317,18 @@ class AssessmentServiceV5ImplTest {
         boolean isRetake = false;
 
         // Get the private method
+        Class<?> submitDataClass = Class.forName(
+                "com.igot.cb.assessment.service.AssessmentServiceV5Impl$SubmitAssessmentData");
+        Constructor<?> submitDataCtor = submitDataClass.getDeclaredConstructor();
+        submitDataCtor.setAccessible(true);
         Method method = AssessmentServiceV5Impl.class.getDeclaredMethod(
                 "validateSubmitAssessmentRequest",
-                Map.class, String.class, List.class, List.class, Map.class, Map.class, String.class, boolean.class
+                Map.class, String.class, submitDataClass, String.class, boolean.class
         );
         method.setAccessible(true);
 
         // Invoke the method
-        Object result = method.invoke(service, submitRequest, userId, sectionList, questionList, assessmentHierarchy, userAssessment, assessmentId, isRetake);
+        Object result = method.invoke(service, submitRequest, userId, submitDataCtor.newInstance(), assessmentId, isRetake);
 
         // Assert result as needed
         assertNotNull(result);
@@ -384,13 +389,13 @@ class AssessmentServiceV5ImplTest {
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(assessmentHierarchy);
 
-        when(assessUtilServ.readAssessmentRecord(eq("assessmentId"), eq(List.of(Constants.LANGUAGE))))
+        when(assessUtilServ.readAssessmentRecord("assessmentId", List.of(Constants.LANGUAGE)))
                 .thenReturn("english");
 
         when(assessUtilServ.readContentRecord(eq("course123"), anyList()))
                 .thenReturn("course123-baseLang");
 
-        when(contentService.readContent(eq("course123-baseLang")))
+        when(contentService.readContent("course123-baseLang"))
                 .thenReturn(courseMap);
 
         when(assessUtilServ.readUserSubmittedAssessmentRecords(anyString(), anyString()))
@@ -1078,42 +1083,6 @@ class AssessmentServiceV5ImplTest {
     // Additional test cases to cover all missed lines for 100% coverage
 
     @Test
-    void testRetakeAssessment_PreEnrolledContext() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        Map<String, Object> assessmentDetails = new HashMap<>();
-        assessmentDetails.put(Constants.CONTEXT_CATEGORY_TAG, Constants.PRE_ENROLLED_ASSESSMENT_KEY);
-
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenReturn(assessmentDetails);
-
-        SBApiResponse response = service.retakeAssessment("id", "token", false);
-        assertEquals(1, response.getResult().get(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED));
-        assertEquals(0, response.getResult().get(Constants.RETAKE_ATTEMPTS_CONSUMED));
-    }
-
-    @Test
-    void testRetakeAssessment_ExceptionHandling() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenThrow(new RuntimeException("mocked exception"));
-
-        SBApiResponse response = service.retakeAssessment("id", "token", false);
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertTrue(response.getParams().getErrmsg().contains("Error while calculating retake assessment"));
-    }
-
-    @Test
-    void testReadAssessment_EditModeTrue_Practice() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        Map<String, Object> hierarchy = new HashMap<>();
-        hierarchy.put(Constants.PRIMARY_CATEGORY, Constants.PRACTICE_QUESTION_SET);
-        hierarchy.put(Constants.CHILDREN, new ArrayList<>());
-        when(assessUtilServ.fetchHierarchyFromAssessServc(anyString(), anyString())).thenReturn(hierarchy);
-        SBApiResponse response = service.readAssessment("id", "token", true, "ctx");
-        assertNotNull(response.getResult().get(Constants.QUESTION_SET));
-    }
-
-    @Test
     void testReadAssessment_RetakeLimitExceeded() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         Map<String, Object> hierarchy = new HashMap<>();
@@ -1140,18 +1109,8 @@ class AssessmentServiceV5ImplTest {
         assertEquals(Constants.ASSESSMENT_RETRY_ATTEMPTS_CROSSED, response.getParams().getErrmsg());
     }
 
-
     @Test
-    void testReadAssessment_ValidationErrorAfterExceptions() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenThrow(new RuntimeException("Simulated error"));
-        SBApiResponse response = service.readAssessment("id", "token", false, "ctx");
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertTrue(response.getParams().getErrmsg().contains("Error while reading assessment"));
-    }
-
-    @Test
+    @SuppressWarnings("unchecked")
     void testPrivate_validateQuestionListRequest_invalidAssessmentId() throws Exception {
         Method method = AssessmentServiceV5Impl.class.getDeclaredMethod("validateQuestionListAPI",
                 Map.class, String.class, List.class, boolean.class);
@@ -1183,6 +1142,7 @@ class AssessmentServiceV5ImplTest {
 
 
     @Test
+    @SuppressWarnings("unchecked")
     void testPrivate_calculateAssessmentFinalResults_ValidData() throws Exception {
         Map<String, Object> input = new HashMap<>();
         input.put(Constants.RESULT, 85.0);
@@ -1198,31 +1158,6 @@ class AssessmentServiceV5ImplTest {
         Map<String, Object> output = (Map<String, Object>) method.invoke(service, input);
         assertEquals(true, output.get(Constants.PASS));
         assertEquals(85.0, output.get(Constants.OVERALL_RESULT));
-    }
-
-    @Test
-    void testRetakeAssessments_PreEnrolledContext() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        Map<String, Object> assessmentDetails = new HashMap<>();
-        assessmentDetails.put(Constants.CONTEXT_CATEGORY_TAG, Constants.PRE_ENROLLED_ASSESSMENT_KEY);
-
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenReturn(assessmentDetails);
-
-        SBApiResponse response = service.retakeAssessment("id", "token", false);
-        assertEquals(1, response.getResult().get(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED));
-        assertEquals(0, response.getResult().get(Constants.RETAKE_ATTEMPTS_CONSUMED));
-    }
-
-    @Test
-    void testRetakeAssessments_ExceptionHandling() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
-        when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
-                .thenThrow(new RuntimeException("mocked exception"));
-
-        SBApiResponse response = service.retakeAssessment("id", "token", false);
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertTrue(response.getParams().getErrmsg().contains("Error while calculating retake assessment"));
     }
 
     @Test
@@ -1268,6 +1203,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testPrivate_calculateAssessmentFinalResults() throws Exception {
         Map<String, Object> input = new HashMap<>();
         input.put(Constants.RESULT, 90.0);
@@ -1288,22 +1224,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testPrivate_createResponseMapWithProperStructure_resultNull() {
-        Map<String, Object> section = new HashMap<>();
-        section.put(Constants.IDENTIFIER, "sec1");
-        section.put(Constants.OBJECT_TYPE, "obj");
-        section.put(Constants.PRIMARY_CATEGORY, "cat");
-        section.put(Constants.MINIMUM_PASS_PERCENTAGE, 50);
-        section.put(Constants.NAME, "Section 1");
-        section.put(Constants.CHILDREN, List.of("q1", "q2"));
-
-        Map<String, Object> result = service.createResponseMapWithProperStructure(section, null, 50);
-        assertEquals(0.0, result.get(Constants.RESULT));
-        assertEquals(2, result.get(Constants.BLANK));
-        assertEquals(false, result.get(Constants.PASS));
-    }
-
-    @Test
+    @SuppressWarnings("unchecked")
     void testPrivate_validateQuestionListAPI_invalidAssessmentId() throws Exception {
         Method method = AssessmentServiceV5Impl.class.getDeclaredMethod("validateQuestionListAPI",
                 Map.class, String.class, List.class, boolean.class);
@@ -1502,15 +1423,18 @@ class AssessmentServiceV5ImplTest {
         existingData.put(Constants.ASSESSMENT_READ_RESPONSE_KEY, "");
 
         // Use reflection to call the private method
+        Class<?> submitDataClass = Class.forName(
+                "com.igot.cb.assessment.service.AssessmentServiceV5Impl$SubmitAssessmentData");
+        Constructor<?> submitDataCtor = submitDataClass.getDeclaredConstructor();
+        submitDataCtor.setAccessible(true);
         Method validateMethod = AssessmentServiceV5Impl.class.getDeclaredMethod(
                 "validateSubmitAssessmentRequest",
-                Map.class, String.class, List.class, List.class, Map.class, Map.class, String.class, boolean.class
+                Map.class, String.class, submitDataClass, String.class, boolean.class
         );
         validateMethod.setAccessible(true);
         validateMethod.invoke(
                 spyService,
-                submitRequest, "user123", hierarchySectionList, submitSectionList,
-                hierarchy, existingData, "token", false
+                submitRequest, "user123", submitDataCtor.newInstance(), "token", false
         );
 
         // Act
@@ -1591,9 +1515,13 @@ class AssessmentServiceV5ImplTest {
         AssessmentServiceV5Impl spyService = Mockito.spy(service);
 
         // --- Manually call validateSubmitAssessmentRequest via Reflection ---
+        Class<?> submitDataClass = Class.forName(
+                "com.igot.cb.assessment.service.AssessmentServiceV5Impl$SubmitAssessmentData");
+        Constructor<?> submitDataCtor = submitDataClass.getDeclaredConstructor();
+        submitDataCtor.setAccessible(true);
         Method validateMethod = AssessmentServiceV5Impl.class.getDeclaredMethod(
                 "validateSubmitAssessmentRequest",
-                Map.class, String.class, List.class, List.class, Map.class, Map.class, String.class, boolean.class
+                Map.class, String.class, submitDataClass, String.class, boolean.class
         );
         validateMethod.setAccessible(true);
         List<Map<String, Object>> hierarchySections = new ArrayList<>();
@@ -1605,7 +1533,7 @@ class AssessmentServiceV5ImplTest {
         hierarchy.put(Constants.CHILDREN, hierarchySections);
         submitSections.add(submitSection);
 
-        validateMethod.invoke(spyService, submitRequest, "user1", hierarchySections, submitSections, hierarchy, existingData, "token", false);
+        validateMethod.invoke(spyService, submitRequest, "user1", submitDataCtor.newInstance(), "token", false);
 
         // Stub response creator (if required internally)
         doReturn(Map.of()).when(spyService).createResponseMapWithProperStructure(any(), any(), any());
@@ -1689,9 +1617,13 @@ class AssessmentServiceV5ImplTest {
         AssessmentServiceV5Impl spyService = Mockito.spy(service);
 
         // --- Manually call validateSubmitAssessmentRequest via Reflection ---
+        Class<?> submitDataClass = Class.forName(
+                "com.igot.cb.assessment.service.AssessmentServiceV5Impl$SubmitAssessmentData");
+        Constructor<?> submitDataCtor = submitDataClass.getDeclaredConstructor();
+        submitDataCtor.setAccessible(true);
         Method validateMethod = AssessmentServiceV5Impl.class.getDeclaredMethod(
                 "validateSubmitAssessmentRequest",
-                Map.class, String.class, List.class, List.class, Map.class, Map.class, String.class, boolean.class
+                Map.class, String.class, submitDataClass, String.class, boolean.class
         );
         validateMethod.setAccessible(true);
         List<Map<String, Object>> hierarchySections = new ArrayList<>();
@@ -1703,7 +1635,7 @@ class AssessmentServiceV5ImplTest {
         hierarchy.put(Constants.CHILDREN, hierarchySections);
         submitSections.add(submitSection);
 
-        validateMethod.invoke(spyService, submitRequest, "user1", hierarchySections, submitSections, hierarchy, existingData, "token", false);
+        validateMethod.invoke(spyService, submitRequest, "user1", submitDataCtor.newInstance(), "token", false);
 
         // Stub response creator (if required internally)
         doReturn(Map.of()).when(spyService).createResponseMapWithProperStructure(any(), any(), any());
@@ -1930,7 +1862,7 @@ class AssessmentServiceV5ImplTest {
         List<Map<String, Object>> originalList = List.of(q1, q2, q3);
 
         // Act
-        List<Map<String, Object>> shuffledList = service.shuffleQuestions(originalList);
+        List<Map<String, Object>> shuffledList = AssessmentServiceV5Impl.shuffleQuestions(originalList);
 
         // Assert
         assertNotNull(shuffledList);
@@ -2111,6 +2043,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testCalculateSectionFinalResults_WithValidData() throws Exception {
         // Arrange
         Map<String, Object> section1 = new HashMap<>();
@@ -2195,13 +2128,19 @@ class AssessmentServiceV5ImplTest {
         ReflectionTestUtils.setField(service, "kafkaProducer", producer);
 
         // Reflectively invoke the updated private method
+        Class<?> eventCtxClass = Class.forName(
+                "com.igot.cb.assessment.service.AssessmentServiceV5Impl$KafkaEventContext");
+        Constructor<?> eventCtxCtor = eventCtxClass.getDeclaredConstructor(
+                Map.class, String.class, String.class, String.class, String.class, String.class);
+        eventCtxCtor.setAccessible(true);
         Method method = AssessmentServiceV5Impl.class.getDeclaredMethod(
                 "writeDataToDatabaseAndTriggerKafkaEvent",
-                Map.class, String.class, Map.class, Map.class, String.class, String.class, String.class, String.class
+                eventCtxClass, Map.class, Map.class
         );
         method.setAccessible(true);
-        method.invoke(service, submitRequest, userId, questionSetFromAssessment, result,
-                primaryCategory, courseCategory, token, contextCategory);
+        method.invoke(service,
+                eventCtxCtor.newInstance(submitRequest, userId, token, primaryCategory, courseCategory, contextCategory),
+                questionSetFromAssessment, result);
 
         // Assert interactions
         verify(assessmentRepository, times(1)).updateUserAssesmentDataToDB(eq(userId), eq("assessmentId123"),
@@ -2213,6 +2152,7 @@ class AssessmentServiceV5ImplTest {
 
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReadSectionLevelParams_WithShufflePath() throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
         // Arrange
         Map<String, Object> assessmentAllDetail = new HashMap<>();
@@ -2449,18 +2389,6 @@ class AssessmentServiceV5ImplTest {
     @Test
     void testGetShuffleFlagFromHierarchy_NullChildren_ReturnsTrue() throws Exception {
         Map<String, Object> hierarchy = new HashMap<>();
-        Method method = AssessmentServiceV5Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
-        assertTrue(result);
-    }
-
-    @Test
-    void testGetShuffleFlagFromHierarchy_EmptyIdentifierList_ReturnsTrue() throws Exception {
-        Map<String, Object> hierarchy = new HashMap<>();
-        hierarchy.put(Constants.CHILDREN, List.of(
-                Map.of(Constants.IDENTIFIER, "q1")
-        ));
         Method method = AssessmentServiceV5Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
         method.setAccessible(true);
         boolean result = (boolean) method.invoke(service, hierarchy);

@@ -1,13 +1,15 @@
 package com.igot.cb.assessment.repo;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.cassandra.core.CassandraBatchOperations;
 import org.springframework.data.cassandra.core.CassandraOperations;
 
 public class UserAssessmentMasterRepositoryImpl implements UserAssessmentMasterRepositoryCustom {
 
-	@Autowired
 	CassandraOperations cassandraOperations;
+
+	public UserAssessmentMasterRepositoryImpl(CassandraOperations cassandraOperations) {
+	    this.cassandraOperations = cassandraOperations;
+	}
 
 	/*
 	 * (non-Javadoc)

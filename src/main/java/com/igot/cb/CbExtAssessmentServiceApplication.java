@@ -1,5 +1,6 @@
 package com.igot.cb;
 
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -27,12 +28,16 @@ public class CbExtAssessmentServiceApplication {
 	private ClientHttpRequestFactory getClientHttpRequestFactory() {
 		int timeout = 45000;
 		RequestConfig config = RequestConfig.custom().
-				setConnectTimeout(Timeout.ofMilliseconds(timeout)).
 				setConnectionRequestTimeout(Timeout.ofMilliseconds(timeout)).
 				setResponseTimeout(Timeout.ofMilliseconds(timeout)).
 				build();
 
+		ConnectionConfig connectionConfig = ConnectionConfig.custom()
+				.setConnectTimeout(Timeout.ofMilliseconds(timeout))
+				.build();
+
 		PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+		connectionManager.setDefaultConnectionConfig(connectionConfig);
 		connectionManager.setMaxTotal(2000);
 		connectionManager.setDefaultMaxPerRoute(500);
 

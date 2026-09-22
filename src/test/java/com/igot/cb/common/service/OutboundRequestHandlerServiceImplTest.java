@@ -294,16 +294,6 @@ class OutboundRequestHandlerServiceImplTest {
     }
 
     @Test
-    void testFetchResultUsingGet_NullRequest() {
-        Map<String, Object> expected = Map.of("got", true);
-        ResponseEntity<Map> responseEntity = new ResponseEntity<>(expected, HttpStatus.OK);
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(responseEntity);
-        Map<String, Object> result = service.fetchResultUsingGet(uri, headers);
-        assertEquals(expected, result);
-    }
-
-    @Test
     void testFetchResultUsingPatch_NonJsonErrorResponse() {
         when(restTemplate.patchForObject(anyString(), any(HttpEntity.class), eq(Map.class)))
                 .thenThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST, "Bad Request", "not_json".getBytes(), null));

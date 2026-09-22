@@ -49,8 +49,7 @@ public class AssessmentUtilServiceImpl implements AssessmentUtilService {
 									+ options.get("text").toString().toLowerCase());
 					}
 					break;
-				case MCQ_SCA:
-				case MCQ_MCA:
+				case MCQ_SCA, MCQ_MCA:
 					for (Map<String, Object> options : (List<Map<String, Object>>) question.get(OPTIONS)) {
 						if ((boolean) options.get(IS_CORRECT))
 							correctOption.add(options.get(OPTION_ID).toString());
@@ -99,8 +98,7 @@ public class AssessmentUtilServiceImpl implements AssessmentUtilService {
 										+ options.get(RESPONSE).toString().toLowerCase());
 						}
 						break;
-					case MCQ_SCA:
-					case MCQ_MCA:
+					case MCQ_SCA, MCQ_MCA:
 						for (Map<String, Object> options : (List<Map<String, Object>>) question.get(OPTIONS)) {
 							if ((boolean) options.get(USER_SELECTED))
 								marked.add(options.get(OPTION_ID).toString());
@@ -213,7 +211,7 @@ public class AssessmentUtilServiceImpl implements AssessmentUtilService {
 	@SuppressWarnings("unchecked")
 	@Override
 	public Map<String, Object> getAnswerKeyForAssessmentAuthoringPreview(Map<String, Object> contentMeta) {
-		return null;
+		return Collections.emptyMap();
 	}
 
 	/**

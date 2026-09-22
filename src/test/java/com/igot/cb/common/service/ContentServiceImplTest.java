@@ -139,7 +139,8 @@ class ContentServiceImplTest {
         when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(response);
 
         Map<String, Object> result = contentService.readContent("cid", List.of("field1"));
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test
@@ -206,7 +207,8 @@ class ContentServiceImplTest {
         Map<String, Object> response = Map.of(Constants.RESPONSE_CODE, "ERROR");
         when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(response);
         Map<String, Object> result = contentService.readContent("cid", List.of("field1"));
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
         // Additional assertion: verify fetchResult was called once
         verify(outboundRequestHandlerService, times(1)).fetchResult(anyString());
     }
@@ -215,7 +217,8 @@ class ContentServiceImplTest {
     void testReadContent_ResponseNull() {
         when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(null);
         Map<String, Object> result = contentService.readContent("cid", List.of("field1"));
-        assertNull(result);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test
