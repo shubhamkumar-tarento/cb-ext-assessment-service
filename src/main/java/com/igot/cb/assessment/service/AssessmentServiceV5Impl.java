@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.*;
 
 import static com.igot.cb.common.util.ProjectUtil.createDefaultResponse;
+import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
 import static java.util.stream.Collectors.toList;
 
 @Service
@@ -383,7 +384,13 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
     }
 
     public SBApiResponse submitAssessmentAsync(Map<String, Object> submitRequest, String userAuthToken,boolean editMode) {
-        logger.info("AssessmentServicev5Impl::submitAssessmentAsync.. started");
+        return runSubmitAssessmentAsync(submitRequest, userAuthToken, editMode, "submitAssessmentAsync",
+                Constants.METHOD_V5_SUBMIT_ASSESSMENT_ASYNC);
+    }
+
+    private SBApiResponse runSubmitAssessmentAsync(Map<String, Object> submitRequest, String userAuthToken,
+            boolean editMode, String methodLabel, String auditMethodName) {
+        logger.info("AssessmentServicev5Impl::{}.. started", methodLabel);
         SBApiResponse outgoingResponse = createDefaultResponse(Constants.API_SUBMIT_ASSESSMENT);
         long assessmentCompletionTime= Calendar.getInstance().getTime().getTime();
         try {
@@ -430,7 +437,7 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
             logger.error(errMsg, e);
             updateErrorDetails(outgoingResponse, errMsg, HttpStatus.INTERNAL_SERVER_ERROR);
             assessUtilServ.publishFailedAssessmentAuditEvent((String) submitRequest.get(Constants.USER_ID),
-                    (String) submitRequest.get(Constants.IDENTIFIER), submitRequest, errMsg, Constants.METHOD_V5_SUBMIT_ASSESSMENT_ASYNC, outgoingResponse.getResult());
+                    (String) submitRequest.get(Constants.IDENTIFIER), submitRequest, errMsg, auditMethodName, outgoingResponse.getResult());
         }
         return outgoingResponse;
     }
@@ -612,12 +619,6 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
                 logger.error(ERR_PRACTICE_PROGRESS_UPDATE);
             }
         }
-    }
-
-    private void updateErrorDetails(SBApiResponse response, String errMsg, HttpStatus responseCode) {
-        response.getParams().setStatus(Constants.FAILED);
-        response.getParams().setErrmsg(errMsg);
-        response.setResponseCode(responseCode);
     }
 
     private int calculateAssessmentRetakeCount(String userId, String assessmentId) {
@@ -1503,56 +1504,8 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
     }
     
     public SBApiResponse submitAssessmentAsyncV6(Map<String, Object> submitRequest, String userAuthToken,boolean editMode) {
-        logger.info("AssessmentServicev5Impl::submitAssessmentAsyncV6.. started");
-        SBApiResponse outgoingResponse = createDefaultResponse(Constants.API_SUBMIT_ASSESSMENT);
-        long assessmentCompletionTime= Calendar.getInstance().getTime().getTime();
-        try {
-            // Step-1 fetch userid
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(userAuthToken);
-            if (ObjectUtils.isEmpty(userId)) {
-                updateErrorDetails(outgoingResponse, Constants.USER_ID_DOESNT_EXIST, HttpStatus.BAD_REQUEST);
-                return outgoingResponse;
-            }
-            String assessmentIdFromRequest = (String) submitRequest.get(Constants.IDENTIFIER);
-            SubmitAssessmentData data = new SubmitAssessmentData();
-            //Confirm whether the submitted request sections and questions match.
-            String errMsg = validateSubmitAssessmentRequest(submitRequest, userId, data, userAuthToken, editMode);
-            if (StringUtils.isNotBlank(errMsg)) {
-                updateErrorDetails(outgoingResponse, errMsg, HttpStatus.BAD_REQUEST);
-                return outgoingResponse;
-            }
-
-            errMsg = assessUtilServ.validateAssessmentLanguageAndNodes(submitRequest);
-
-            if (StringUtils.isNotBlank(errMsg)) {
-                updateErrorDetails(outgoingResponse, errMsg, HttpStatus.BAD_REQUEST);
-                return outgoingResponse;
-            }
-
-            RetakeCounts retakeCounts = resolveRetakeCounts(data.assessmentHierarchy, userId, assessmentIdFromRequest);
-            String scoreCutOffType = resolveScoreCutOffType(data.assessmentHierarchy);
-            String courseCategory = resolveCourseCategory(submitRequest);
-            SubmitContext ctx = new SubmitContext(submitRequest, userId, userAuthToken, editMode,
-                    assessmentIdFromRequest, courseCategory, scoreCutOffType);
-
-            List<Map<String, Object>> sectionLevelsResults = new ArrayList<>();
-            if (scoreAllSections(ctx, data, outgoingResponse, sectionLevelsResults)) {
-                return outgoingResponse;
-            }
-            if (Constants.SECTION_LEVEL_SCORE_CUTOFF.equalsIgnoreCase(scoreCutOffType)) {
-                finalizeSectionLevelResults(ctx, data, outgoingResponse, sectionLevelsResults, retakeCounts,
-                        assessmentCompletionTime);
-                return outgoingResponse;
-            }
-
-        } catch (Exception e) {
-            String errMsg = String.format("Failed to process assessment submit request. Exception: %s", e.getMessage());
-            logger.error(errMsg, e);
-            updateErrorDetails(outgoingResponse, errMsg, HttpStatus.INTERNAL_SERVER_ERROR);
-            assessUtilServ.publishFailedAssessmentAuditEvent((String) submitRequest.get(Constants.USER_ID),
-                    (String) submitRequest.get(Constants.IDENTIFIER), submitRequest, errMsg, Constants.METHOD_V5_SUBMIT_ASSESSMENT_ASYNC_V6, outgoingResponse.getResult());
-        }
-        return outgoingResponse;
+        return runSubmitAssessmentAsync(submitRequest, userAuthToken, editMode, "submitAssessmentAsyncV6",
+                Constants.METHOD_V5_SUBMIT_ASSESSMENT_ASYNC_V6);
     }
 
     /**

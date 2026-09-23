@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 
 import static com.igot.cb.common.util.Constants.RESPONSE;
 import static com.igot.cb.common.util.ProjectUtil.createDefaultResponse;
+import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
 import com.igot.cb.core.exception.ApplicationLogicError;
 
 @Service
@@ -715,12 +716,6 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
             errMsg = String.format("Failed to process assessent submit request. Exception: %s", e.getMessage());
             logger.error(errMsg, e);
         }
-    }
-
-    private void updateErrorDetails(SBApiResponse response, String errMsg, HttpStatus responseCode) {
-        response.getParams().setStatus(Constants.FAILED);
-        response.getParams().setErrmsg(errMsg);
-        response.setResponseCode(responseCode);
     }
 
 

@@ -29,6 +29,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
+
 
 @Service
 @SuppressWarnings("unchecked")
@@ -85,9 +87,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
             errMsg = "Failed to read Assessment. Exception: " + e.getMessage();
         }
         if (StringUtils.isNotBlank(errMsg)) {
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg(errMsg);
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            updateErrorDetails(response, errMsg, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
     }
@@ -236,9 +236,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
             logger.error(errMsg, e);
         }
         if (StringUtils.isNotBlank(errMsg)) {
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg(errMsg);
-            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            updateErrorDetails(response, errMsg, HttpStatus.BAD_REQUEST);
         }
         return response;
     }
@@ -434,9 +432,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
                     sectionListFromSubmitRequest, assessmentHierarchy, outgoingResponse);
         }
         if (StringUtils.isNotBlank(errMsg)) {
-            outgoingResponse.getParams().setStatus(Constants.FAILED);
-            outgoingResponse.getParams().setErrmsg(errMsg);
-            outgoingResponse.setResponseCode(HttpStatus.BAD_REQUEST);
+            updateErrorDetails(outgoingResponse, errMsg, HttpStatus.BAD_REQUEST);
         }
         return outgoingResponse;
     }
@@ -968,9 +964,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
             errMsg = "Failed to read Assessment. Exception: " + e.getMessage();
         }
         if (StringUtils.isNotBlank(errMsg)) {
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg(errMsg);
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            updateErrorDetails(response, errMsg, HttpStatus.INTERNAL_SERVER_ERROR);
         } else {
             response.getResult().put(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED, retakeAttemptsAllowed);
             response.getResult().put(Constants.RETAKE_ATTEMPTS_CONSUMED, retakeAttemptsConsumed);

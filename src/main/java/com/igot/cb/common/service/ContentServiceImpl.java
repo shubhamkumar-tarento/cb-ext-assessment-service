@@ -19,6 +19,7 @@ import org.springframework.util.ObjectUtils;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
+import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
 import static org.keycloak.util.JsonSerialization.mapper;
 
 @Service
@@ -105,34 +106,42 @@ public class ContentServiceImpl implements ContentService{
                     serverConfig.getCourseServiceHost() + serverConfig.getProgressUpdateEndPoint(),
                     request, headers);
 
-            if ("OK".equals(apiResponse.get("responseCode"))) {
-                response = Constants.SUCCESS;
-                if (logger.isInfoEnabled()) {
-                    logger.info("Successfully updated progress for user : {}, for assessment : {}, of course :{}", userId,
-                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
-                }
-            } else {
-                if (logger.isInfoEnabled()) {
-                    logger.info("Failed to update progress for user : {}, for assessment : {}, of course :{}", userId,
-                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
-                }
-                outgoingResponse.setResult(null);
-                updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-
+            response = handlePatchResult(apiResponse, outgoingResponse,
+                    "Successfully updated progress for user : {}, for assessment : {}, of course :{}",
+                    new Object[] { userId, reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID) },
+                    userId, reqBody);
         } catch (Exception e) {
-            logger.error(String.format("Failed to update progress for user: %s, for assessment: %s, of course: %s. Exception: %s",
-                    userId, reqBody.get(Constants.IDENTIFIER),reqBody.get(Constants.COURSE_ID), e.getMessage()), e);
+            response = handlePatchFailure(e, userId, reqBody, outgoingResponse);
+        }
+        return response;
+    }
+
+    private String handlePatchResult(Map<String, Object> apiResponse, SBApiResponse outgoingResponse,
+            String successLogFormat, Object[] successLogArgs, String userId, Map<String, Object> reqBody) {
+        String response;
+        if ("OK".equals(apiResponse.get("responseCode"))) {
+            response = Constants.SUCCESS;
+            if (logger.isInfoEnabled()) {
+                logger.info(successLogFormat, successLogArgs);
+            }
+        } else {
+            response = "";
+            if (logger.isInfoEnabled()) {
+                logger.info("Failed to update progress for user : {}, for assessment : {}, of course :{}", userId,
+                        reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
+            }
             outgoingResponse.setResult(null);
             updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
     }
 
-    private void updateErrorDetails(SBApiResponse response, String errMsg, HttpStatus responseCode) {
-        response.getParams().setStatus(Constants.FAILED);
-        response.getParams().setErrmsg(errMsg);
-        response.setResponseCode(responseCode);
+    private String handlePatchFailure(Exception e, String userId, Map<String, Object> reqBody, SBApiResponse outgoingResponse) {
+        logger.error(String.format("Failed to update progress for user: %s, for assessment: %s, of course: %s. Exception: %s",
+                userId, reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID), e.getMessage()), e);
+        outgoingResponse.setResult(null);
+        updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
+        return "";
     }
 
     public Map<String, Object> getHierarchyResponseMap(String contentId) {
@@ -226,26 +235,12 @@ public class ContentServiceImpl implements ContentService{
                     serverConfig.getExtCourseServiceHost() + serverConfig.getContentStateUpdate(),
                     request, headers);
 
-            if ("OK".equals(apiResponse.get("responseCode"))) {
-                response = Constants.SUCCESS;
-                if (logger.isInfoEnabled()) {
-                    logger.info("Successfully updated progress for user : {}, for assessment : {}", userId,
-                            reqBody.get(Constants.IDENTIFIER));
-                }
-            } else {
-                if (logger.isInfoEnabled()) {
-                    logger.info("Failed to update progress for user : {}, for assessment : {}, of course :{}", userId,
-                            reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID));
-                }
-                outgoingResponse.setResult(null);
-                updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-
+            response = handlePatchResult(apiResponse, outgoingResponse,
+                    "Successfully updated progress for user : {}, for assessment : {}",
+                    new Object[] { userId, reqBody.get(Constants.IDENTIFIER) },
+                    userId, reqBody);
         } catch (Exception e) {
-            logger.error(String.format("Failed to update progress for user: %s, for assessment: %s, of course: %s. Exception: %s",
-                    userId, reqBody.get(Constants.IDENTIFIER),reqBody.get(Constants.COURSE_ID), e.getMessage()), e);
-            outgoingResponse.setResult(null);
-            updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
+            response = handlePatchFailure(e, userId, reqBody, outgoingResponse);
         }
         return response;
     }

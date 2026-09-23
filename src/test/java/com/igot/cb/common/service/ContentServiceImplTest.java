@@ -154,19 +154,6 @@ class ContentServiceImplTest {
     }
 
     @Test
-    void testUpdateErrorDetails_Reflection() throws Exception {
-        SBApiResponse resp = new SBApiResponse();
-        java.lang.reflect.Method method = ContentServiceImpl.class.getDeclaredMethod(
-                "updateErrorDetails", SBApiResponse.class, String.class, HttpStatus.class);
-        method.setAccessible(true);
-        method.invoke(contentService, resp, "err", HttpStatus.BAD_REQUEST);
-
-        assertEquals(Constants.FAILED, resp.getParams().getStatus());
-        assertEquals("err", resp.getParams().getErrmsg());
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getResponseCode());
-    }
-
-    @Test
     void testReadContentFromCache_FieldsEmpty() {
         Map<String, Object> cacheData = Map.of("field1", "v1", "field2", "v2");
         when(dataCacheMgr.getContentFromCache(anyString())).thenReturn(cacheData);

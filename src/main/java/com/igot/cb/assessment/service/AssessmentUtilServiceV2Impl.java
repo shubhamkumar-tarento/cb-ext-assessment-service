@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -121,15 +122,10 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				.get(Constants.OPTIONS);
 		switch (questionType) {
 			case Constants.MTF:
-				for (Map<String, Object> option : options) {
-					marked.add(option.get(Constants.INDEX).toString() + "-"
-							+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
-				}
+				collectMtfMarkedOptions(options, marked);
 				break;
 			case Constants.FTB:
-				for (Map<String, Object> option : options) {
-					marked.add((String) option.get(Constants.SELECTED_ANSWER));
-				}
+				collectFtbSelectedAnswers(options, marked);
 				break;
 			case Constants.MCQ_SCA, Constants.MCQ_MCA:
 				for (Map<String, Object> option : options) {
@@ -303,6 +299,11 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	@Override
 	public Map<String, Object> filterQuestionMapDetail(Map<String, Object> questionMapResponse,
 			String primaryCategory, boolean shuffle) {
+		return filterQuestionMapDetailInternal(questionMapResponse, primaryCategory, shuffle, true);
+	}
+
+	private Map<String, Object> filterQuestionMapDetailInternal(Map<String, Object> questionMapResponse,
+			String primaryCategory, boolean shuffle, boolean excludeFtbChoices) {
 		List<String> questionParams = serverProperties.getAssessmentQuestionParams();
 		Map<String, Object> updatedQuestionMap = new HashMap<>();
 		for (String questionParam : questionParams) {
@@ -316,21 +317,9 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			updatedQuestionMap.put(Constants.EDITOR_STATE, editorState);
 		}
 		if (questionMapResponse.containsKey(Constants.CHOICES)
-				&& updatedQuestionMap.containsKey(Constants.PRIMARY_CATEGORY) && !updatedQuestionMap
-						.get(Constants.PRIMARY_CATEGORY).toString().equalsIgnoreCase(Constants.FTB_QUESTION)) {
-			Map<String, Object> choicesObj = (Map<String, Object>) questionMapResponse.get(Constants.CHOICES);
-			Map<String, Object> updatedChoicesMap = new HashMap<>();
-			if (choicesObj.containsKey(Constants.OPTIONS)) {
-				List<Map<String, Object>> optionsMapList = (List<Map<String, Object>>) choicesObj
-						.get(Constants.OPTIONS);
-				String qType = (String) updatedQuestionMap.get(Constants.QUESTION_TYPE);
-				boolean shouldShuffle = shuffle
-						&& StringUtils.isNotBlank(qType)
-						&& serverProperties.getShuffleAllowedQTypes().contains(qType);
-				updatedChoicesMap.put(Constants.OPTIONS,
-						shouldShuffle ? shuffleOptions(optionsMapList) : optionsMapList);
-			}
-			updatedQuestionMap.put(Constants.CHOICES, updatedChoicesMap);
+				&& updatedQuestionMap.containsKey(Constants.PRIMARY_CATEGORY) && (!excludeFtbChoices || !updatedQuestionMap
+						.get(Constants.PRIMARY_CATEGORY).toString().equalsIgnoreCase(Constants.FTB_QUESTION))) {
+			populateFilteredChoices(questionMapResponse, updatedQuestionMap, shuffle);
 		}
 		if (questionMapResponse.containsKey(Constants.RHS_CHOICES)
 				&& updatedQuestionMap.containsKey(Constants.PRIMARY_CATEGORY) && updatedQuestionMap
@@ -341,6 +330,23 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		}
 
 		return updatedQuestionMap;
+	}
+
+	private void populateFilteredChoices(Map<String, Object> questionMapResponse,
+			Map<String, Object> updatedQuestionMap, boolean shuffle) {
+		Map<String, Object> choicesObj = (Map<String, Object>) questionMapResponse.get(Constants.CHOICES);
+		Map<String, Object> updatedChoicesMap = new HashMap<>();
+		if (choicesObj.containsKey(Constants.OPTIONS)) {
+			List<Map<String, Object>> optionsMapList = (List<Map<String, Object>>) choicesObj
+					.get(Constants.OPTIONS);
+			String qType = (String) updatedQuestionMap.get(Constants.QUESTION_TYPE);
+			boolean shouldShuffle = shuffle
+					&& StringUtils.isNotBlank(qType)
+					&& serverProperties.getShuffleAllowedQTypes().contains(qType);
+			updatedChoicesMap.put(Constants.OPTIONS,
+					shouldShuffle ? shuffleOptions(optionsMapList) : optionsMapList);
+		}
+		updatedQuestionMap.put(Constants.CHOICES, updatedChoicesMap);
 	}
 
 	@Override
@@ -694,18 +700,31 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	 * @param assessmentType the type of assessment.
 	 */
 	private void getMarkedIndexForEachQuestion(String questionType, List<Map<String, Object>> options, List<String> marked, String assessmentType) {
+		collectMarkedIndexes(questionType, options, marked, assessmentType, AssessmentUtilServiceV2Impl::collectFtbSelectedAnswers);
+	}
+
+	private static void collectFtbSelectedAnswers(List<Map<String, Object>> options, List<String> marked) {
+		for (Map<String, Object> option : options) {
+			marked.add((String) option.get(Constants.SELECTED_ANSWER));
+		}
+	}
+
+	private static void collectMtfMarkedOptions(List<Map<String, Object>> options, List<String> marked) {
+		for (Map<String, Object> option : options) {
+			marked.add(option.get(Constants.INDEX).toString() + "-"
+					+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
+		}
+	}
+
+	private void collectMarkedIndexes(String questionType, List<Map<String, Object>> options, List<String> marked,
+			String assessmentType, BiConsumer<List<Map<String, Object>>, List<String>> ftbCollector) {
 		logger.info("Getting marks or index for each question...");
 		switch (questionType) {
 			case Constants.MTF:
-				for (Map<String, Object> option : options) {
-					marked.add(option.get(Constants.INDEX).toString() + "-"
-							+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
-				}
+				collectMtfMarkedOptions(options, marked);
 				break;
 			case Constants.FTB:
-				for (Map<String, Object> option : options) {
-					marked.add((String) option.get(Constants.SELECTED_ANSWER));
-				}
+				ftbCollector.accept(options, marked);
 				break;
 			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
 				if (assessmentType.equalsIgnoreCase(Constants.QUESTION_WEIGHTAGE)) {
@@ -894,43 +913,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	@Override
 	public Map<String, Object> filterQuestionMapDetailV2(Map<String, Object> questionMapResponse,
 														 String primaryCategory, boolean shuffle) {
-		List<String> questionParams = serverProperties.getAssessmentQuestionParams();
-		Map<String, Object> updatedQuestionMap = new HashMap<>();
-		for (String questionParam : questionParams) {
-			if (questionMapResponse.containsKey(questionParam)) {
-				updatedQuestionMap.put(questionParam, questionMapResponse.get(questionParam));
-			}
-		}
-		if (questionMapResponse.containsKey(Constants.EDITOR_STATE)
-				&& primaryCategory.equalsIgnoreCase(Constants.PRACTICE_QUESTION_SET)) {
-			Map<String, Object> editorState = (Map<String, Object>) questionMapResponse.get(Constants.EDITOR_STATE);
-			updatedQuestionMap.put(Constants.EDITOR_STATE, editorState);
-		}
-		if (questionMapResponse.containsKey(Constants.CHOICES)
-				&& updatedQuestionMap.containsKey(Constants.PRIMARY_CATEGORY)) {
-			Map<String, Object> choicesObj = (Map<String, Object>) questionMapResponse.get(Constants.CHOICES);
-			Map<String, Object> updatedChoicesMap = new HashMap<>();
-			if (choicesObj.containsKey(Constants.OPTIONS)) {
-				List<Map<String, Object>> optionsMapList = (List<Map<String, Object>>) choicesObj
-						.get(Constants.OPTIONS);
-				String qType = (String) updatedQuestionMap.get(Constants.QUESTION_TYPE);
-				boolean shouldShuffle = shuffle
-						&& StringUtils.isNotBlank(qType)
-						&& serverProperties.getShuffleAllowedQTypes().contains(qType);
-				updatedChoicesMap.put(Constants.OPTIONS,
-						shouldShuffle ? shuffleOptions(optionsMapList) : optionsMapList);
-			}
-			updatedQuestionMap.put(Constants.CHOICES, updatedChoicesMap);
-		}
-		if (questionMapResponse.containsKey(Constants.RHS_CHOICES)
-				&& updatedQuestionMap.containsKey(Constants.PRIMARY_CATEGORY) && updatedQuestionMap
-				.get(Constants.PRIMARY_CATEGORY).toString().equalsIgnoreCase(Constants.MTF_QUESTION)) {
-			List<Object> rhsChoicesObj = (List<Object>) questionMapResponse.get(Constants.RHS_CHOICES);
-			Collections.shuffle(rhsChoicesObj);
-			updatedQuestionMap.put(Constants.RHS_CHOICES, rhsChoicesObj);
-		}
-
-		return updatedQuestionMap;
+		return filterQuestionMapDetailInternal(questionMapResponse, primaryCategory, shuffle, false);
 	}
 
 
@@ -1154,33 +1137,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	 * @param assessmentType Type of assessment
 	 */
 	private void getMarkedIndexForEachQuestionV2(String questionType, List<Map<String, Object>> options, List<String> marked, String assessmentType) {
-		logger.info("Getting marks or index for each question...");
-		switch (questionType) {
-			case Constants.MTF:
-				for (Map<String, Object> option : options) {
-					marked.add(option.get(Constants.INDEX).toString() + "-"
-							+ option.get(Constants.SELECTED_ANSWER).toString().toLowerCase());
-				}
-				break;
-			case Constants.FTB:
-				processFillInTheBlankUserAnswers(options, marked);
-				break;
-			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
-				if (assessmentType.equalsIgnoreCase(Constants.QUESTION_WEIGHTAGE)) {
-					getMarkedIndexForQuestionWeightAge(options, marked);
-				} else if (assessmentType.equalsIgnoreCase(Constants.OPTION_WEIGHTAGE)) {
-					getMarkedIndexForOptionWeightAge(options, marked);
-				}
-				break;
-			case Constants.MCQ_MCA_W:
-				if (assessmentType.equalsIgnoreCase(Constants.OPTION_WEIGHTAGE)) {
-					getMarkedIndexForOptionWeightAge(options, marked);
-				}
-				break;
-			default:
-				break;
-		}
-		logger.info("Marks or index retrieved successfully.");
+		collectMarkedIndexes(questionType, options, marked, assessmentType, this::processFillInTheBlankUserAnswers);
 	}
 
 	public String validateContextLocking(Map<String, Object> assessmentAllDetail, String parentContextId, SBApiResponse response, String userId, String assessmentIdentifier) {

@@ -43,29 +43,12 @@ public class OutboundRequestHandlerServiceImpl {
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         Object response = null;
         try {
-            if (log.isDebugEnabled()) {
-                StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
-                        .append(Constants.FETCH_RESULT_CONSTANT).append(System.lineSeparator());
-                str.append(Constants.URI_CONSTANT).append(uri).append(System.lineSeparator());
-                log.debug(str.toString());
-            }
+            logFetchUri(uri);
             response = restTemplate.getForObject(uri, Map.class);
         } catch (HttpClientErrorException e) {
-            try {
-                response = (new ObjectMapper()).readValue(e.getResponseBodyAsString(),
-                        new TypeReference<HashMap<String, Object>>() {
-                        });
-            } catch (Exception e1) {
-                // Body is not JSON; leave response null and fall through to the error log below.
-            }
-            log.error(ERROR_RECEIVED_LOG, e.getResponseBodyAsString(), e);
+            response = recoverErrorBody(e);
         } catch (Exception e) {
-            log.error(String.valueOf(e));
-            try {
-                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
-            } catch (Exception e1) {
-                // Response could not be serialised for logging; nothing further to report.
-            }
+            logSerialisationFailure(e, mapper, response);
         }
         return response;
     }
@@ -79,16 +62,8 @@ public class OutboundRequestHandlerServiceImpl {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         try {
-            if (log.isDebugEnabled()) {
-                StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
-                        .append(Constants.FETCH_RESULT_CONSTANT).append(System.lineSeparator());
-                str.append(Constants.URI_CONSTANT).append(uri).append(System.lineSeparator());
-                log.debug(str.toString());
-            }
-            HttpHeaders headers = new HttpHeaders();
-            if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach(headers::set);
-            }
+            logFetchUri(uri);
+            HttpHeaders headers = buildHeaders(headersValues, false);
             HttpEntity<Void> entity = new HttpEntity<>(headers);
             return restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class).getBody();
         } catch (Exception e) {
@@ -100,11 +75,7 @@ public class OutboundRequestHandlerServiceImpl {
     public Map<String, Object> fetchResultUsingPatch(String uri, Object request, Map<String, String> headersValues) {
         Map<String, Object> response = null;
         try {
-            HttpHeaders headers = new HttpHeaders();
-            if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach(headers::set);
-            }
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildHeaders(headersValues, true);
             HttpEntity<Object> entity = new HttpEntity<>(request, headers);
             if (log.isDebugEnabled()) {
                 logDetails(uri, request);
@@ -151,11 +122,7 @@ public class OutboundRequestHandlerServiceImpl {
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         Map<String, Object> response = null;
         try {
-            HttpHeaders headers = new HttpHeaders();
-            if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach(headers::set);
-            }
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildHeaders(headersValues, true);
             HttpEntity<Object> entity = new HttpEntity<>(request, headers);
             if (log.isDebugEnabled()) {
                 StringBuilder str = new StringBuilder(this.getClass().getCanonicalName()).append(".fetchResult")
@@ -165,27 +132,11 @@ public class OutboundRequestHandlerServiceImpl {
                 log.debug(str.toString());
             }
             response = restTemplate.postForObject(uri, entity, Map.class);
-            if (log.isDebugEnabled()) {
-                StringBuilder str = new StringBuilder("Response: ");
-                str.append(mapper.writeValueAsString(response)).append(System.lineSeparator());
-                log.debug(str.toString());
-            }
+            logResponseDebug(mapper, response);
         } catch (HttpClientErrorException hce) {
-            try {
-                response = (new ObjectMapper()).readValue(hce.getResponseBodyAsString(),
-                        new TypeReference<HashMap<String, Object>>() {
-                        });
-            } catch (Exception e1) {
-                // Body is not JSON; leave response null and fall through to the error log below.
-            }
-            log.error(ERROR_RECEIVED_LOG, hce.getResponseBodyAsString(), hce);
+            response = recoverErrorBody(hce);
         } catch(JsonProcessingException e) {
-            log.error(String.valueOf(e));
-            try {
-                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
-            } catch (Exception e1) {
-                // Response could not be serialised for logging; nothing further to report.
-            }
+            logSerialisationFailure(e, mapper, response);
         }
         return response;
     }
@@ -195,41 +146,66 @@ public class OutboundRequestHandlerServiceImpl {
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         Map<String, Object> response = null;
         try {
-            HttpHeaders headers = new HttpHeaders();
-            if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach(headers::set);
-            }
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildHeaders(headersValues, true);
             HttpEntity<Object> entity = new HttpEntity<>(headers);
-            if (log.isDebugEnabled()) {
-                StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
-                        .append(Constants.FETCH_RESULT_CONSTANT).append(System.lineSeparator());
-                str.append(Constants.URI_CONSTANT).append(uri).append(System.lineSeparator());
-                log.debug(str.toString());
-            }
+            logFetchUri(uri);
             response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class).getBody();
-            if (log.isDebugEnabled()) {
-                StringBuilder str = new StringBuilder("Response: ");
-                str.append(mapper.writeValueAsString(response)).append(System.lineSeparator());
-                log.debug(str.toString());
-            }
+            logResponseDebug(mapper, response);
         } catch (HttpClientErrorException hce) {
-            try {
-                response = (new ObjectMapper()).readValue(hce.getResponseBodyAsString(),
-                        new TypeReference<HashMap<String, Object>>() {
-                        });
-            } catch (Exception e1) {
-                // Body is not JSON; leave response null and fall through to the error log below.
-            }
-            log.error(ERROR_RECEIVED_LOG, hce.getResponseBodyAsString(), hce);
+            response = recoverErrorBody(hce);
         } catch(JsonProcessingException e) {
-            log.error(String.valueOf(e));
-            try {
-                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
-            } catch (Exception e1) {
-                // Response could not be serialised for logging; nothing further to report.
-            }
+            logSerialisationFailure(e, mapper, response);
         }
         return response;
+    }
+
+    private HttpHeaders buildHeaders(Map<String, String> headersValues, boolean jsonContentType) {
+        HttpHeaders headers = new HttpHeaders();
+        if (!CollectionUtils.isEmpty(headersValues)) {
+            headersValues.forEach(headers::set);
+        }
+        if (jsonContentType) {
+            headers.setContentType(MediaType.APPLICATION_JSON);
+        }
+        return headers;
+    }
+
+    private void logFetchUri(String uri) {
+        if (log.isDebugEnabled()) {
+            StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
+                    .append(Constants.FETCH_RESULT_CONSTANT).append(System.lineSeparator());
+            str.append(Constants.URI_CONSTANT).append(uri).append(System.lineSeparator());
+            log.debug(str.toString());
+        }
+    }
+
+    private void logResponseDebug(ObjectMapper mapper, Object response) throws JsonProcessingException {
+        if (log.isDebugEnabled()) {
+            StringBuilder str = new StringBuilder("Response: ");
+            str.append(mapper.writeValueAsString(response)).append(System.lineSeparator());
+            log.debug(str.toString());
+        }
+    }
+
+    private Map<String, Object> recoverErrorBody(HttpClientErrorException e) {
+        Map<String, Object> response = null;
+        try {
+            response = (new ObjectMapper()).readValue(e.getResponseBodyAsString(),
+                    new TypeReference<HashMap<String, Object>>() {
+                    });
+        } catch (Exception e1) {
+            // Body is not JSON; leave response null and fall through to the error log below.
+        }
+        log.error(ERROR_RECEIVED_LOG, e.getResponseBodyAsString(), e);
+        return response;
+    }
+
+    private void logSerialisationFailure(Exception e, ObjectMapper mapper, Object response) {
+        log.error(String.valueOf(e));
+        try {
+            log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
+        } catch (Exception e1) {
+            // Response could not be serialised for logging; nothing further to report.
+        }
     }
 }
