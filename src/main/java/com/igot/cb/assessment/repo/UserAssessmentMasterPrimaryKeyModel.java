@@ -1,5 +1,7 @@
 package com.igot.cb.assessment.repo;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.cassandra.core.cql.PrimaryKeyType;
 import org.springframework.data.cassandra.core.mapping.PrimaryKeyClass;
 import org.springframework.data.cassandra.core.mapping.PrimaryKeyColumn;
@@ -9,6 +11,8 @@ import java.math.BigDecimal;
 import java.util.Date;
 import java.util.UUID;
 
+@Getter
+@Setter
 @PrimaryKeyClass
 public class UserAssessmentMasterPrimaryKeyModel implements Serializable {
 
@@ -28,46 +32,6 @@ public class UserAssessmentMasterPrimaryKeyModel implements Serializable {
 
 	@PrimaryKeyColumn(name = "id", ordinal = 3, type = PrimaryKeyType.CLUSTERED)
 	private UUID id;
-
-	public String getRootOrg() {
-		return rootOrg;
-	}
-
-	public void setRootOrg(String rootOrg) {
-		this.rootOrg = rootOrg;
-	}
-
-	public Date getTsCreated() {
-		return tsCreated;
-	}
-
-	public void setTsCreated(Date tsCreated) {
-		this.tsCreated = tsCreated;
-	}
-
-	public String getParentSourceId() {
-		return parentSourceId;
-	}
-
-	public void setParentSourceId(String parentSourceId) {
-		this.parentSourceId = parentSourceId;
-	}
-
-	public BigDecimal getResultPercent() {
-		return resultPercent;
-	}
-
-	public void setResultPercent(BigDecimal resultPercent) {
-		this.resultPercent = resultPercent;
-	}
-
-	public UUID getId() {
-		return id;
-	}
-
-	public void setId(UUID id) {
-		this.id = id;
-	}
 
 	public UserAssessmentMasterPrimaryKeyModel() {
 		super();

@@ -1,11 +1,15 @@
 package com.igot.cb.assessment.repo;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.cassandra.core.cql.PrimaryKeyType;
 import org.springframework.data.cassandra.core.mapping.PrimaryKeyClass;
 import org.springframework.data.cassandra.core.mapping.PrimaryKeyColumn;
 
 import java.io.Serializable;
 
+@Getter
+@Setter
 @PrimaryKeyClass
 public class UserAssessmentSummaryPrimaryKeyModel implements Serializable {
 	private static final long serialVersionUID = 1L;
@@ -18,30 +22,6 @@ public class UserAssessmentSummaryPrimaryKeyModel implements Serializable {
 
 	@PrimaryKeyColumn(name = "content_id", ordinal = 2, type = PrimaryKeyType.CLUSTERED)
 	private String contentId;
-
-	public String getRootOrg() {
-		return rootOrg;
-	}
-
-	public void setRootOrg(String rootOrg) {
-		this.rootOrg = rootOrg;
-	}
-
-	public String getUserId() {
-		return userId;
-	}
-
-	public void setUserId(String userId) {
-		this.userId = userId;
-	}
-
-	public String getContentId() {
-		return contentId;
-	}
-
-	public void setContentId(String contentId) {
-		this.contentId = contentId;
-	}
 
 	public UserAssessmentSummaryPrimaryKeyModel() {
 		super();

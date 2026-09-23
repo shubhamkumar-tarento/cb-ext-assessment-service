@@ -1,5 +1,7 @@
 package com.igot.cb.assessment.repo;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.cassandra.core.mapping.Column;
 import org.springframework.data.cassandra.core.mapping.PrimaryKey;
 import org.springframework.data.cassandra.core.mapping.Table;
@@ -7,6 +9,8 @@ import org.springframework.data.cassandra.core.mapping.Table;
 import java.math.BigDecimal;
 import java.util.Date;
 
+@Getter
+@Setter
 @Table("user_assessment_master")
 public class UserAssessmentMasterModel {
 
@@ -31,86 +35,6 @@ public class UserAssessmentMasterModel {
 	private String sourceTitle;
 	@Column("user_id")
 	private String userId;
-
-	public UserAssessmentMasterPrimaryKeyModel getPrimaryKey() {
-		return primaryKey;
-	}
-
-	public void setPrimaryKey(UserAssessmentMasterPrimaryKeyModel primaryKey) {
-		this.primaryKey = primaryKey;
-	}
-
-	public Integer getCorrectCount() {
-		return correctCount;
-	}
-
-	public void setCorrectCount(Integer correctCount) {
-		this.correctCount = correctCount;
-	}
-
-	public Date getDateCreated() {
-		return dateCreated;
-	}
-
-	public void setDateCreated(Date dateCreated) {
-		this.dateCreated = dateCreated;
-	}
-
-	public Integer getIncorrectCount() {
-		return incorrectCount;
-	}
-
-	public void setIncorrectCount(Integer incorrectCount) {
-		this.incorrectCount = incorrectCount;
-	}
-
-	public Integer getNotAnsweredCount() {
-		return notAnsweredCount;
-	}
-
-	public void setNotAnsweredCount(Integer notAnsweredCount) {
-		this.notAnsweredCount = notAnsweredCount;
-	}
-
-	public String getParentContentType() {
-		return parentContentType;
-	}
-
-	public void setParentContentType(String parentContentType) {
-		this.parentContentType = parentContentType;
-	}
-
-	public BigDecimal getPassPercent() {
-		return passPercent;
-	}
-
-	public void setPassPercent(BigDecimal passPercent) {
-		this.passPercent = passPercent;
-	}
-
-	public String getSourceId() {
-		return sourceId;
-	}
-
-	public void setSourceId(String sourceId) {
-		this.sourceId = sourceId;
-	}
-
-	public String getSourceTitle() {
-		return sourceTitle;
-	}
-
-	public void setSourceTitle(String sourceTitle) {
-		this.sourceTitle = sourceTitle;
-	}
-
-	public String getUserId() {
-		return userId;
-	}
-
-	public void setUserId(String userId) {
-		this.userId = userId;
-	}
 
 	private UserAssessmentMasterModel(Builder builder) {
 		this.primaryKey = builder.primaryKey;

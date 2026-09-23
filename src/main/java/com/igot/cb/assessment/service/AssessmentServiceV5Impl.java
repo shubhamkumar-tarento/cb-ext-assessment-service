@@ -990,7 +990,9 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
         Map<String, Object> submitRequest = eventContext.submitRequest();
         String contextCategory = eventContext.contextCategory();
         try {
-            if (questionSetFromAssessment.get(Constants.START_TIME) == null) {
+            if (questionSetFromAssessment == null || questionSetFromAssessment.get(Constants.START_TIME) == null) {
+                logger.error("AssessmentServiceV5Impl : writeDataToDatabaseAndTriggerKafkaEvent : "
+                        + "questionSetFromAssessment is null or missing start time, skipping DB write and Kafka event");
                 return;
             }
             Instant startTime = assessUtilServ.parseStartTimeToInstant(questionSetFromAssessment.get(Constants.START_TIME));

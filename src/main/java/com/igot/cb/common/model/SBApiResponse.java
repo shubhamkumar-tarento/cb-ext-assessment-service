@@ -1,5 +1,7 @@
 package com.igot.cb.common.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.http.HttpStatus;
 
 import java.sql.Timestamp;
@@ -7,6 +9,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+@Getter
+@Setter
 public class SBApiResponse {
 
     private String id;
@@ -15,6 +19,8 @@ public class SBApiResponse {
     private SunbirdApiRespParam params;
     private HttpStatus responseCode;
 
+    @Getter(lombok.AccessLevel.NONE)
+    @Setter(lombok.AccessLevel.NONE)
     private Map<String, Object> response = new HashMap<>();
 
     public SBApiResponse() {
@@ -26,46 +32,6 @@ public class SBApiResponse {
     public SBApiResponse(String id) {
         this();
         this.id = id;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getVer() {
-        return ver;
-    }
-
-    public void setVer(String ver) {
-        this.ver = ver;
-    }
-
-    public String getTs() {
-        return ts;
-    }
-
-    public void setTs(String ts) {
-        this.ts = ts;
-    }
-
-    public SunbirdApiRespParam getParams() {
-        return params;
-    }
-
-    public void setParams(SunbirdApiRespParam params) {
-        this.params = params;
-    }
-
-    public HttpStatus getResponseCode() {
-        return responseCode;
-    }
-
-    public void setResponseCode(HttpStatus responseCode) {
-        this.responseCode = responseCode;
     }
 
     public Map<String, Object> getResult() {
