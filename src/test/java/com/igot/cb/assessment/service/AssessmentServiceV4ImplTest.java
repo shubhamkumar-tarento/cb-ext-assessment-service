@@ -1574,10 +1574,10 @@ class AssessmentServiceV4ImplTest {
 
     @Test
     void readAssessmentResultV4SubmittedWithBlankResponseReturnsEmptyResult() {
-        Map<String, Object> record = new HashMap<>();
-        record.put(Constants.STATUS, Constants.SUBMITTED);
-        record.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "");
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(record));
+        Map<String, Object> submittedRecord = new HashMap<>();
+        submittedRecord.put(Constants.STATUS, Constants.SUBMITTED);
+        submittedRecord.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "");
+        when(assessUtilServ.readUserSubmittedAssessmentRecords(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(submittedRecord));
 
         SBApiResponse resp = service.readAssessmentResultV4(resultRequest(), TOKEN);
 
@@ -1587,10 +1587,10 @@ class AssessmentServiceV4ImplTest {
 
     @Test
     void readAssessmentResultV4MapperFailsInternalError() throws Exception {
-        Map<String, Object> record = new HashMap<>();
-        record.put(Constants.STATUS, Constants.SUBMITTED);
-        record.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "{bad");
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(record));
+        Map<String, Object> submittedRecord = new HashMap<>();
+        submittedRecord.put(Constants.STATUS, Constants.SUBMITTED);
+        submittedRecord.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "{bad");
+        when(assessUtilServ.readUserSubmittedAssessmentRecords(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(submittedRecord));
         when(mapper.readValue(anyString(), any(TypeReference.class))).thenThrow(new RuntimeException("parse"));
 
         SBApiResponse resp = service.readAssessmentResultV4(resultRequest(), TOKEN);
@@ -2111,8 +2111,7 @@ class AssessmentServiceV4ImplTest {
         service.handleAssessmentSubmitRequest(asyncRequest(submitRequest(
                 new ArrayList<>(List.of(submitSection("s1", "q1"))))), false, TOKEN);
 
-        verify(assessUtilServ).readQListfromCache(eq(Collections.emptyList()), eq(ASSESSMENT_ID), eq(false),
-                eq(TOKEN));
+        verify(assessUtilServ).readQListfromCache(Collections.emptyList(), ASSESSMENT_ID, false, TOKEN);
     }
 
     @Test

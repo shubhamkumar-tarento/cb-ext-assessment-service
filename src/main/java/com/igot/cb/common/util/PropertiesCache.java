@@ -8,11 +8,17 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
-/*
+/**
  * @author Amit Kumar
  *
  * this class is used for reading properties file
  */
+// Singleton is intentional here: this is a small, immutable, read-mostly cache of
+// property files loaded once at class-init time and shared read-only by
+// CassandraConnectionManagerImpl, AccessTokenValidator and KeyManager. A managed Spring
+// bean is unnecessary since these callers are not Spring beans themselves, and the
+// initialization-on-demand holder below is already thread-safe without extra locking.
+@SuppressWarnings("java:S6548")
 public class PropertiesCache {
 
     public final Map<String, Float> attributePercentageMap = new ConcurrentHashMap<>();

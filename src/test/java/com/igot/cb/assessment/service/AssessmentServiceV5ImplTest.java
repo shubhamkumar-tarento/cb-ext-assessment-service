@@ -2785,7 +2785,7 @@ class AssessmentServiceV5ImplTest {
     // ------------------------------------------------------------------
 
     @Test
-    void testRetakeAssessment_ZeroRetakeAttemptsAllowed() throws Exception {
+    void testRetakeAssessment_ZeroRetakeAttemptsAllowed() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(new HashMap<>(Map.of(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, 0)));
@@ -2798,7 +2798,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testRetakeAssessment_NoMaxAttempts_NonCyclicalCountsSubmittedOnly() throws Exception {
+    void testRetakeAssessment_NoMaxAttempts_NonCyclicalCountsSubmittedOnly() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         Map<String, Object> hierarchy = new HashMap<>(Map.of(Constants.PRIMARY_CATEGORY, "Course Assessment"));
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString())).thenReturn(hierarchy);
@@ -2829,7 +2829,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testRetakeAssessment_Cyclical_WithinCycle() throws Exception {
+    void testRetakeAssessment_Cyclical_WithinCycle() {
         stubCyclicalRetake(1, null);
 
         SBApiResponse response = service.retakeAssessment("assess1", "token", false);
@@ -2841,7 +2841,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testRetakeAssessment_Cyclical_CoolOffActive() throws Exception {
+    void testRetakeAssessment_Cyclical_CoolOffActive() {
         stubCyclicalRetake(3, "Cool-off period active");
 
         SBApiResponse response = service.retakeAssessment("assess1", "token", false);
@@ -2852,7 +2852,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testRetakeAssessment_Cyclical_CoolOffExpired_ResetsCount() throws Exception {
+    void testRetakeAssessment_Cyclical_CoolOffExpired_ResetsCount() {
         stubCyclicalRetake(3, "");
 
         SBApiResponse response = service.retakeAssessment("assess1", "token", false);
@@ -2883,7 +2883,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessment_EditMode_QuestionWeightage_FiltersParams() throws Exception {
+    void testReadAssessment_EditMode_QuestionWeightage_FiltersParams() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.fetchHierarchyFromAssessServc("assess1", "token"))
                 .thenReturn(buildReadHierarchy("Course Assessment", Constants.QUESTION_WEIGHTAGE));
@@ -2902,7 +2902,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessment_SubmittedBeforeEndTime_StartsRetakeAttempt() throws Exception {
+    void testReadAssessment_SubmittedBeforeEndTime_StartsRetakeAttempt() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -2923,7 +2923,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessment_UnknownStatusBeforeEndTime_ReturnsWithoutQuestionSet() throws Exception {
+    void testReadAssessment_UnknownStatusBeforeEndTime_ReturnsWithoutQuestionSet() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -2940,7 +2940,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessment_RetakeWithNegativeLimit_ContextLocked() throws Exception {
+    void testReadAssessment_RetakeWithNegativeLimit_ContextLocked() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         Map<String, Object> hierarchy = buildReadHierarchy("Course Assessment", "default");
         hierarchy.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, -1);
@@ -2975,7 +2975,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadQuestionList_HierarchyMissing() throws Exception {
+    void testReadQuestionList_HierarchyMissing() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(Collections.emptyMap());
@@ -3006,7 +3006,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadQuestionList_NoUserAssessmentData() throws Exception {
+    void testReadQuestionList_NoUserAssessmentData() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(Map.of(Constants.PRIMARY_CATEGORY, "Course Assessment"));
@@ -3019,7 +3019,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadQuestionList_EmptyStoredQuestionSet_InvalidAssessmentId() throws Exception {
+    void testReadQuestionList_EmptyStoredQuestionSet_InvalidAssessmentId() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(Map.of(Constants.PRIMARY_CATEGORY, "Course Assessment"));
@@ -3049,7 +3049,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetQuestionIdList_InvalidRequestShapes_ReturnEmpty() throws Exception {
+    void testGetQuestionIdList_InvalidRequestShapes_ReturnEmpty() {
         List<Map<String, Object>> invalidBodies = new ArrayList<>();
         invalidBodies.add(new HashMap<>());
         invalidBodies.add(new HashMap<>(Map.of(Constants.REQUEST, new HashMap<>())));
@@ -3075,7 +3075,7 @@ class AssessmentServiceV5ImplTest {
     // ------------------------------------------------------------------
 
     @Test
-    void testReadAssessmentResultV5_InvalidRequests() throws Exception {
+    void testReadAssessmentResultV5_InvalidRequests() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
 
         SBApiResponse noRequestKey = service.readAssessmentResultV5(new HashMap<>(Map.of("x", "y")), "token");
@@ -3105,7 +3105,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessmentResultV5_SubmittedWithBlankResponse() throws Exception {
+    void testReadAssessmentResultV5_SubmittedWithBlankResponse() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readUserSubmittedAssessmentRecords("user1", "a1"))
                 .thenReturn(List.of(Map.of(Constants.STATUS, Constants.SUBMITTED,
@@ -3118,7 +3118,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessmentResultV5_InvalidStoredJson() throws Exception {
+    void testReadAssessmentResultV5_InvalidStoredJson() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readUserSubmittedAssessmentRecords("user1", "a1"))
                 .thenReturn(List.of(Map.of(Constants.STATUS, Constants.SUBMITTED,
@@ -3148,7 +3148,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_EditMode_ReturnsQuestionSet() throws Exception {
+    void testSaveAssessmentAsync_EditMode_ReturnsQuestionSet() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.fetchHierarchyFromAssessServc("assess1", "token"))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3160,7 +3160,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_PracticeSet_ReturnsQuestionSet() throws Exception {
+    void testSaveAssessmentAsync_PracticeSet_ReturnsQuestionSet() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy(Constants.PRACTICE_QUESTION_SET, "default"));
@@ -3172,7 +3172,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_NoExistingData() throws Exception {
+    void testSaveAssessmentAsync_NoExistingData() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3185,7 +3185,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_AlreadySubmitted() throws Exception {
+    void testSaveAssessmentAsync_AlreadySubmitted() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3202,7 +3202,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_StartNotBeforeEnd() throws Exception {
+    void testSaveAssessmentAsync_StartNotBeforeEnd() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3218,7 +3218,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_DbUpdateFails() throws Exception {
+    void testSaveAssessmentAsync_DbUpdateFails() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3237,7 +3237,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testSaveAssessmentAsync_InvalidStoredTimes_HandlesException() throws Exception {
+    void testSaveAssessmentAsync_InvalidStoredTimes_HandlesException() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3255,7 +3255,7 @@ class AssessmentServiceV5ImplTest {
     // ------------------------------------------------------------------
 
     @Test
-    void testReadAssessmentSavePoint_EditMode_ReturnsQuestionSet() throws Exception {
+    void testReadAssessmentSavePoint_EditMode_ReturnsQuestionSet() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.fetchHierarchyFromAssessServc("assess1", "token"))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3267,7 +3267,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessmentSavePoint_EndTimePassedButSubmitted() throws Exception {
+    void testReadAssessmentSavePoint_EndTimePassedButSubmitted() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3283,7 +3283,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessmentSavePoint_InvalidEndTime_HandlesException() throws Exception {
+    void testReadAssessmentSavePoint_InvalidEndTime_HandlesException() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
         when(assessUtilServ.readAssessmentHierarchyFromCache(anyString(), anyBoolean(), anyString()))
                 .thenReturn(buildReadHierarchy("Course Assessment", "default"));
@@ -3301,7 +3301,7 @@ class AssessmentServiceV5ImplTest {
     // ------------------------------------------------------------------
 
     @Test
-    void testProcessRandomizationForQuestions_NoPositiveIntegerLimit_ReturnsOriginal() throws Exception {
+    void testProcessRandomizationForQuestions_NoPositiveIntegerLimit_ReturnsOriginal() {
         List<Map<String, Object>> questions = List.of(
                 Map.of(Constants.IDENTIFIER, "q1", Constants.QUESTION_LEVEL, "easy"),
                 Map.of(Constants.IDENTIFIER, "q2", Constants.QUESTION_LEVEL, "hard"));
@@ -3316,7 +3316,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testProcessRandomizationForQuestions_IgnoresOtherKeysAndUnknownLevels() throws Exception {
+    void testProcessRandomizationForQuestions_IgnoresOtherKeysAndUnknownLevels() {
         List<Map<String, Object>> questions = List.of(
                 Map.of(Constants.IDENTIFIER, "q1", Constants.QUESTION_LEVEL, "easy"),
                 Map.of(Constants.IDENTIFIER, "q2", Constants.QUESTION_LEVEL, "easy"),
@@ -3333,7 +3333,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGenerateMarkMap_IgnoresNonMarkKeys() throws Exception {
+    void testGenerateMarkMap_IgnoresNonMarkKeys() {
         Map<String, Map<String, Object>> scheme = new HashMap<>();
         scheme.put("easy", Map.of("marksForQuestion", 2, Constants.NO_OF_QUESTIONS, 5));
         scheme.put("hard", Map.of(Constants.NO_OF_QUESTIONS, 1));
@@ -3361,7 +3361,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testAutoPublish_PublishResponseNotOk() throws Exception {
+    void testAutoPublish_PublishResponseNotOk() {
         stubPublishFlow(Map.of(Constants.RESPONSE_CODE, "SERVER_ERROR"), Map.of(Constants.RESPONSE_CODE, Constants.OK));
 
         SBApiResponse response = service.autoPublish("assess1", "token");
@@ -3373,7 +3373,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testAutoPublish_UpdateOrgNotOk() throws Exception {
+    void testAutoPublish_UpdateOrgNotOk() {
         stubPublishFlow(Map.of(Constants.RESPONSE_CODE, Constants.OK), Map.of(Constants.RESPONSE_CODE, "CLIENT_ERROR"));
 
         SBApiResponse response = service.autoPublish("assess1", "token");
@@ -3385,7 +3385,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testAutoPublish_UpdateOrgEmptyResponse() throws Exception {
+    void testAutoPublish_UpdateOrgEmptyResponse() {
         stubPublishFlow(Map.of(Constants.RESPONSE_CODE, Constants.OK), Collections.emptyMap());
 
         SBApiResponse response = service.autoPublish("assess1", "token");
@@ -3394,7 +3394,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testAutoPublish_UserLookupFails_HandlesException() throws Exception {
+    void testAutoPublish_UserLookupFails_HandlesException() {
         stubPublishFlow(Map.of(Constants.RESPONSE_CODE, Constants.OK), Map.of(Constants.RESPONSE_CODE, Constants.OK));
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(anyString(), anyString(), anyMap(), anyList()))
                 .thenReturn(Collections.emptyList());

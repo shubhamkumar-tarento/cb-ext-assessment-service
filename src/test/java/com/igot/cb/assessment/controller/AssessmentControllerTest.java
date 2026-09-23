@@ -41,7 +41,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void getAssessmentByContentUser() throws Exception {
+    void getAssessmentByContentUser() {
         Map<String, Object> result = Collections.singletonMap("assessment", "data");
         when(assessmentService.getAssessmentByContentUser(anyString(), anyString(), anyString())).thenReturn(result);
 
@@ -62,7 +62,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void getUserAssessmentByContent() throws Exception {
+    void getUserAssessmentByContent() {
         Map<String, Object> result = Collections.singletonMap("assessment", "data");
         when(assessmentService.getAssessmentByContentUser(anyString(), anyString(), anyString())).thenReturn(result);
 
@@ -93,7 +93,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void readAssessment() throws Exception {
+    void readAssessment() {
         SBApiResponse apiResponse = new SBApiResponse();
         apiResponse.setResponseCode(HttpStatus.OK);
         when(assessmentServiceV2.readAssessment(anyString(), anyString())).thenReturn(apiResponse);
@@ -104,7 +104,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void readQuestionList() throws Exception {
+    void readQuestionList() {
         SBApiResponse apiResponse = new SBApiResponse();
         apiResponse.setResponseCode(HttpStatus.OK);
         when(assessmentServiceV2.readQuestionList(anyMap(), anyString())).thenReturn(apiResponse);
@@ -115,7 +115,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void retakeAssessment() throws Exception {
+    void retakeAssessment() {
         SBApiResponse apiResponse = new SBApiResponse();
         apiResponse.setResponseCode(HttpStatus.OK);
         when(assessmentServiceV2.retakeAssessment(anyString(), anyString())).thenReturn(apiResponse);

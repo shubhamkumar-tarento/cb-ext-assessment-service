@@ -1733,12 +1733,12 @@ class AssessmentServiceV2ImplTest {
     }
 
     private SBApiResponse submitWithDbRecord(Map<String, Object> hierarchy, Map<String, Object> request,
-                                            Map<String, Object> record) throws Exception {
+                                            Map<String, Object> submittedRecord) throws Exception {
         AssessmentServiceV2Impl service = realMapperService();
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
         stubHierarchyInCache(SUBMIT_ID, hierarchy);
         lenient().when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
-        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID)).thenReturn(List.of(record));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID)).thenReturn(List.of(submittedRecord));
         return service.submitAssessment(request, TOKEN, false);
     }
 
