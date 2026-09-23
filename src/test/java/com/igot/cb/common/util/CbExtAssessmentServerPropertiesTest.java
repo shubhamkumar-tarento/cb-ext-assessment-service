@@ -3,11 +3,20 @@ package com.igot.cb.common.util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CbExtAssessmentServerPropertiesTest {
+
+    private static final Pattern ACCESSOR_PREFIX = Pattern.compile("^(get|is)");
 
     private CbExtAssessmentServerProperties props;
 
@@ -93,7 +102,10 @@ class CbExtAssessmentServerPropertiesTest {
 
         props.setUserRegistrationDeptExcludeList("dept1,dept2");
         assertEquals(List.of("dept1", "dept2"), props.getUserRegistrationDeptExcludeList());
+    }
 
+    @Test
+    void testScalarPropertyRoundTrip() {
         props.setInsightsLabelLearningHoursAcross("AcrossDept");
         props.setInsightsLabelCertificatesYourDepartment("CertsDept");
         props.setInsightsLabelLearningHoursYourDepartment("HoursDept");
@@ -123,7 +135,10 @@ class CbExtAssessmentServerPropertiesTest {
         assertNull(props.getCiosCloudIconFolderName());
         assertNull(props.getWfServiceHost());
         assertNull(props.getLmsUserUpdatePrivatePath());
+    }
 
+    @Test
+    void testScalarPropertyOverwrite() {
         props.setInsightsLabelLearningHoursAcross("LabelAcross");
         props.setInsightsLabelCertificatesYourDepartment("CertDept");
         props.setInsightsLabelLearningHoursYourDepartment("HoursDept");
@@ -153,7 +168,10 @@ class CbExtAssessmentServerPropertiesTest {
         assertNull(props.getCiosCloudIconFolderName());
         assertNull(props.getWfServiceHost());
         assertNull(props.getLmsUserUpdatePrivatePath());
+    }
 
+    @Test
+    void testUserRegistrationProperties() {
         props.setUserRegistrationIndex("idx001");
         props.setUserRegCodePrefix("URP");
         props.setUserRegistrationTopic("topic1");
@@ -171,14 +189,6 @@ class CbExtAssessmentServerPropertiesTest {
         props.setUserRegistrationSubject("Registration Subject");
         props.setUserRegistrationDomainName("user.domain.com");
         props.setUserRegistrationPreApprovedDomainList("trusted1.com,trusted2.com");
-        props.setDiscussionHubHost("https://hub.example.com");
-        props.setDiscussionHubCreateUserPath("/create/user");
-        props.setSbResetPasswordPath("/reset");
-        props.setSbSendNotificationEmailPath("/send/email");
-        props.setSbAssignRolePath("/assign/role");
-        props.setMasterOrgListFileName("org-list.csv");
-        props.setCustodianOrgId("custodian123");
-        props.setCustodianOrgName("Custodian Org Pvt Ltd");
 
         // Assert all values
         assertEquals("idx001", props.getUserRegistrationIndex());
@@ -198,6 +208,87 @@ class CbExtAssessmentServerPropertiesTest {
         assertEquals("Registration Subject", props.getUserRegistrationSubject());
         assertEquals("user.domain.com", props.getUserRegistrationDomainName());
         assertEquals(List.of("trusted1.com", "trusted2.com"), props.getUserRegistrationPreApprovedDomainList());
+    }
+
+    @Test
+    void testAllSettersAndGettersRoundTrip() throws Exception {
+        Map<String, Object> expectedByProperty = new HashMap<>();
+        for (Method setter : CbExtAssessmentServerProperties.class.getDeclaredMethods()) {
+            if (!Modifier.isPublic(setter.getModifiers()) || !setter.getName().startsWith("set")
+                    || setter.getParameterCount() != 1) {
+                continue;
+            }
+            Object value = sampleValue(setter.getParameterTypes()[0]);
+            try {
+                setter.invoke(props, value);
+            } catch (InvocationTargetException e) {
+                // Setters such as setMinEvictableIdleTime parse a numeric String into a long field
+                assertInstanceOf(NumberFormatException.class, e.getCause(), setter.getName());
+                setter.invoke(props, "7");
+                value = 7L;
+            }
+            expectedByProperty.put(setter.getName().substring(3).toLowerCase(), value);
+        }
+        assertFalse(expectedByProperty.isEmpty());
+
+        int verified = 0;
+        for (Method getter : CbExtAssessmentServerProperties.class.getDeclaredMethods()) {
+            if (!Modifier.isPublic(getter.getModifiers()) || getter.getParameterCount() != 0
+                    || getter.getReturnType() == void.class) {
+                continue;
+            }
+            Object actual = getter.invoke(props);
+            assertNotNull(actual, getter.getName());
+            String property = ACCESSOR_PREFIX.matcher(getter.getName()).replaceFirst("").toLowerCase();
+            Object expected = expectedByProperty.get(property);
+            if (expected == null) {
+                continue;
+            }
+            if (actual instanceof List) {
+                assertEquals(Arrays.asList(((String) expected).split(",", -1)), actual, getter.getName());
+            } else if (actual instanceof String[] && expected instanceof String) {
+                assertArrayEquals(((String) expected).split(",", -1), (String[]) actual, getter.getName());
+            } else if (actual instanceof String[]) {
+                assertArrayEquals((String[]) expected, (String[]) actual, getter.getName());
+            } else {
+                assertEquals(expected, actual, getter.getName());
+            }
+            verified++;
+        }
+        assertTrue(verified > 0);
+    }
+
+    @Test
+    void testLatestCoursesAlertUserEmailListBlankReturnsEmpty() {
+        props.setLatestCoursesAlertUserEmailList("  ");
+        assertTrue(props.getLatestCoursesAlertUserEmailList().isEmpty());
+
+        props.setLatestCoursesAlertUserEmailList("a@x.com,b@x.com");
+        assertEquals(List.of("a@x.com", "b@x.com"), props.getLatestCoursesAlertUserEmailList());
+    }
+
+    private static Object sampleValue(Class<?> type) {
+        if (type == String.class) return "a,b";
+        if (type == boolean.class || type == Boolean.class) return true;
+        if (type == int.class || type == Integer.class) return 7;
+        if (type == long.class || type == Long.class) return 7L;
+        if (type == char.class || type == Character.class) return 'x';
+        if (type == String[].class) return new String[]{"a", "b"};
+        if (Map.class.isAssignableFrom(type)) return new HashMap<>(Map.of("k", "v"));
+        throw new IllegalArgumentException("No sample value for " + type);
+    }
+
+    @Test
+    void testDownstreamServiceProperties() {
+        props.setDiscussionHubHost("https://hub.example.com");
+        props.setDiscussionHubCreateUserPath("/create/user");
+        props.setSbResetPasswordPath("/reset");
+        props.setSbSendNotificationEmailPath("/send/email");
+        props.setSbAssignRolePath("/assign/role");
+        props.setMasterOrgListFileName("org-list.csv");
+        props.setCustodianOrgId("custodian123");
+        props.setCustodianOrgName("Custodian Org Pvt Ltd");
+
         assertEquals("https://hub.example.com", props.getDiscussionHubHost());
         assertEquals("/create/user", props.getDiscussionHubCreateUserPath());
         assertEquals("/reset", props.getSbResetPasswordPath());

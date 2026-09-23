@@ -1,19 +1,10 @@
 package com.igot.cb.common.util;
 
 import org.junit.jupiter.api.*;
-import java.lang.reflect.Field;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PropertiesCacheTest {
-
-    @BeforeEach
-    void resetSingleton() throws Exception {
-        // Reset the singleton instance before each test
-        Field instance = PropertiesCache.class.getDeclaredField("propertiesCache");
-        instance.setAccessible(true);
-        instance.set(null, null);
-    }
 
     @Test
     void testSingletonInstance() {

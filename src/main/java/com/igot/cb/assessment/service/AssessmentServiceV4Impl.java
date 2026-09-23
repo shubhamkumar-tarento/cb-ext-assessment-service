@@ -1,5 +1,6 @@
 package com.igot.cb.assessment.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
@@ -29,7 +30,6 @@ import java.util.stream.Collectors;
 
 import static com.igot.cb.common.util.Constants.RESPONSE;
 import static com.igot.cb.common.util.ProjectUtil.createDefaultResponse;
-import static java.util.stream.Collectors.toList;
 import com.igot.cb.core.exception.ApplicationLogicError;
 
 @Service
@@ -90,28 +90,12 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
                         HttpStatus.INTERNAL_SERVER_ERROR);
                 return response;
             }
-            Object contextCategory = assessmentAllDetail.get(Constants.CONTEXT_CATEGORY_TAG);
-            if (contextCategory != null && Constants.PRE_ENROLLED_ASSESSMENT_KEY.equals(contextCategory.toString())) {
-                retakeAttemptsAllowed = 1;
-                retakeAttemptsConsumed = 0;
-            } else {
-                if (assessmentAllDetail.get(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS) != null) {
-                    retakeAttemptsAllowed = (int) assessmentAllDetail.get(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS);
-                    if (retakeAttemptsAllowed == 0) {
-                        retakeAttemptsConsumed = -1;
-                        response.getResult().put(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED, retakeAttemptsAllowed);
-                        response.getResult().put(Constants.RETAKE_ATTEMPTS_CONSUMED, retakeAttemptsConsumed);
-                        return response;
-                    }
-                }
-                if (serverProperties.isAssessmentRetakeCountVerificationEnabled()) {
-                    retakeAttemptsConsumed = calculateRetakeAttemptsConsumed(
-                            userId, assessmentIdentifier, assessmentAllDetail, retakeAttemptsAllowed, response);
-                    if (response.getResponseCode() == HttpStatus.BAD_REQUEST) {
-                        return response;
-                    }
-                }
+            RetakeTally tally = resolveRetakeTally(assessmentAllDetail, userId, assessmentIdentifier, response);
+            if (tally.respondNow()) {
+                return response;
             }
+            retakeAttemptsAllowed = tally.allowed();
+            retakeAttemptsConsumed = tally.consumed();
         } catch (Exception e) {
             errMsg = String.format("Error while calculating retake assessment. Exception: %s", e.getMessage());
             logger.error(errMsg, e);
@@ -126,6 +110,41 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
         return response;
     }
 
+    /** Retake counts for an assessment, with {@code respondNow} set when {@code response} is already final. */
+    private record RetakeTally(int allowed, int consumed, boolean respondNow) {
+    }
+
+    /**
+     * Resolves how many retakes are allowed and already consumed. Pre-enrolled assessments get a
+     * single attempt; otherwise the configured maximum applies and, when retake verification is
+     * enabled, the consumed count is computed against the user's history.
+     */
+    private RetakeTally resolveRetakeTally(Map<String, Object> assessmentAllDetail, String userId,
+                                           String assessmentIdentifier, SBApiResponse response) {
+        Object contextCategory = assessmentAllDetail.get(Constants.CONTEXT_CATEGORY_TAG);
+        if (contextCategory != null && Constants.PRE_ENROLLED_ASSESSMENT_KEY.equals(contextCategory.toString())) {
+            return new RetakeTally(1, 0, false);
+        }
+        int retakeAttemptsAllowed = 0;
+        if (assessmentAllDetail.get(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS) != null) {
+            retakeAttemptsAllowed = (int) assessmentAllDetail.get(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS);
+            if (retakeAttemptsAllowed == 0) {
+                response.getResult().put(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED, retakeAttemptsAllowed);
+                response.getResult().put(Constants.RETAKE_ATTEMPTS_CONSUMED, -1);
+                return new RetakeTally(retakeAttemptsAllowed, -1, true);
+            }
+        }
+        int retakeAttemptsConsumed = 0;
+        if (serverProperties.isAssessmentRetakeCountVerificationEnabled()) {
+            retakeAttemptsConsumed = calculateRetakeAttemptsConsumed(
+                    userId, assessmentIdentifier, assessmentAllDetail, retakeAttemptsAllowed, response);
+            if (response.getResponseCode() == HttpStatus.BAD_REQUEST) {
+                return new RetakeTally(retakeAttemptsAllowed, retakeAttemptsConsumed, true);
+            }
+        }
+        return new RetakeTally(retakeAttemptsAllowed, retakeAttemptsConsumed, false);
+    }
+
     @Override
     public SBApiResponse readAssessment(String assessmentIdentifier, String token,boolean editMode, String parentContextId) {
         logger.info("AssessmentServiceV4Impl::readAssessment... Started");
@@ -137,7 +156,7 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
                 updateErrorDetails(response, Constants.USER_ID_DOESNT_EXIST, HttpStatus.INTERNAL_SERVER_ERROR);
                 return response;
             }
-            logger.info(String.format("ReadAssessment... UserId: %s, AssessmentIdentifier: %s", userId, assessmentIdentifier));
+            logger.info("ReadAssessment... UserId: {}, AssessmentIdentifier: {}", userId, assessmentIdentifier);
 
             Map<String, Object> assessmentAllDetail = fetchAssessmentHierarchy(assessmentIdentifier, token, editMode);
 
@@ -156,27 +175,15 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
             List<Map<String, Object>> existingDataList = assessUtilServ.readUserSubmittedAssessmentRecords(
                     userId, assessmentIdentifier);
             Instant assessmentStartTime = Instant.now();
-            if (existingDataList.isEmpty()) {
-                logger.info("Assessment read first time for user.");
-                // Add Null check for expectedDuration.throw bad questionSet Assessment Exam
-                if(null == assessmentAllDetail.get(Constants.EXPECTED_DURATION)){
-                    errMsg = Constants.ASSESSMENT_INVALID; }
-                else {
-                    errMsg = assessUtilServ.validateContextLocking(assessmentAllDetail, parentContextId, response, userId, assessmentIdentifier);
-                    if (StringUtils.isNotBlank(errMsg)) {
-                        return response;
-                    }
-                    errMsg = startNewAttempt(response, assessmentAllDetail, assessmentIdentifier, userId,
-                            assessmentStartTime);
-                }
-            } else {
-                AttemptOutcome outcome = resumeOrRestartAttempt(response, assessmentAllDetail, assessmentIdentifier,
-                        parentContextId, userId, assessmentStartTime, existingDataList);
-                if (outcome.contextLockFailed()) {
-                    return response;
-                }
-                errMsg = outcome.errMsg();
+            AttemptOutcome outcome = existingDataList.isEmpty()
+                    ? startFirstAttempt(response, assessmentAllDetail, assessmentIdentifier, parentContextId, userId,
+                            assessmentStartTime)
+                    : resumeOrRestartAttempt(response, assessmentAllDetail, assessmentIdentifier,
+                            parentContextId, userId, assessmentStartTime, existingDataList);
+            if (outcome.contextLockFailed()) {
+                return response;
             }
+            errMsg = outcome.errMsg();
         } catch (Exception e) {
             errMsg = String.format("Error while reading assessment. Exception: %s", e.getMessage());
             logger.error(errMsg, e);
@@ -192,6 +199,27 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
      * return the response untouched, as context-lock validation has already populated it.
      */
     private record AttemptOutcome(String errMsg, boolean contextLockFailed) {
+    }
+
+    /**
+     * Handles the very first read of an assessment for a user: rejects a question set with no
+     * expected duration, applies context locking, then opens a fresh attempt.
+     */
+    private AttemptOutcome startFirstAttempt(SBApiResponse response, Map<String, Object> assessmentAllDetail,
+                                             String assessmentIdentifier, String parentContextId, String userId,
+                                             Instant assessmentStartTime) {
+        logger.info("Assessment read first time for user.");
+        // Add Null check for expectedDuration.throw bad questionSet Assessment Exam
+        if (null == assessmentAllDetail.get(Constants.EXPECTED_DURATION)) {
+            return new AttemptOutcome(Constants.ASSESSMENT_INVALID, false);
+        }
+        String errMsg = assessUtilServ.validateContextLocking(assessmentAllDetail, parentContextId, response, userId,
+                assessmentIdentifier);
+        if (StringUtils.isNotBlank(errMsg)) {
+            return new AttemptOutcome(errMsg, true);
+        }
+        return new AttemptOutcome(startNewAttempt(response, assessmentAllDetail, assessmentIdentifier, userId,
+                assessmentStartTime), false);
     }
 
     /**
@@ -800,27 +828,33 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
             return result;
         }
 
-        if (!MapUtils.isEmpty(userAssessmentAllDetail)) {
-            result.put(Constants.PRIMARY_CATEGORY, (String) userAssessmentAllDetail.get(Constants.PRIMARY_CATEGORY));
-            List<String> questionsFromAssessment = new ArrayList<>();
-            List<Map<String, Object>> sections = (List<Map<String, Object>>) userAssessmentAllDetail
-                    .get(Constants.CHILDREN);
-            for (Map<String, Object> section : sections) {
-                // Out of the list of questions received in the payload, checking if the request
-                // has only those ids which are a part of the user's latest assessment
-                // Fetching all the remaining questions details from the Redis
-                questionsFromAssessment.addAll((List<String>) section.get(Constants.CHILD_NODES));
-            }
-            if (validateQuestionListRequest(identifierList, questionsFromAssessment)) {
-                result.put(Constants.ERROR_MESSAGE, StringUtils.EMPTY);
-            } else {
-                result.put(Constants.ERROR_MESSAGE, Constants.THE_QUESTIONS_IDS_PROVIDED_DONT_MATCH);
-            }
-            return result;
-        } else {
+        applyQuestionIdMatch(result, userAssessmentAllDetail, identifierList);
+        return result;
+    }
+
+    /**
+     * Records whether every requested question id belongs to the user's latest assessment,
+     * or flags the assessment id as invalid when there is no user assessment data.
+     */
+    private void applyQuestionIdMatch(Map<String, String> result, Map<String, Object> userAssessmentAllDetail,
+                                      List<String> identifierList) {
+        if (MapUtils.isEmpty(userAssessmentAllDetail)) {
             result.put(Constants.ERROR_MESSAGE, Constants.ASSESSMENT_ID_INVALID);
-            return result;
+            return;
         }
+        result.put(Constants.PRIMARY_CATEGORY, (String) userAssessmentAllDetail.get(Constants.PRIMARY_CATEGORY));
+        List<String> questionsFromAssessment = new ArrayList<>();
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) userAssessmentAllDetail
+                .get(Constants.CHILDREN);
+        for (Map<String, Object> section : sections) {
+            // Out of the list of questions received in the payload, checking if the request
+            // has only those ids which are a part of the user's latest assessment
+            // Fetching all the remaining questions details from the Redis
+            questionsFromAssessment.addAll((List<String>) section.get(Constants.CHILD_NODES));
+        }
+        result.put(Constants.ERROR_MESSAGE, validateQuestionListRequest(identifierList, questionsFromAssessment)
+                ? StringUtils.EMPTY
+                : Constants.THE_QUESTIONS_IDS_PROVIDED_DONT_MATCH);
     }
 
     private List<String> getQuestionIdList(Map<String, Object> questionListRequest) {
@@ -859,7 +893,7 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
     private String validateSubmitAssessmentRequest(Map<String, Object> submitRequest, String userId,
                                                    SubmitAssessmentData submitData, String token, boolean editMode)
-            throws Exception {
+            throws IOException {
         Map<String, Object> assessmentHierarchy = submitData.assessmentHierarchy;
         Map<String, Object> existingAssessmentData = submitData.existingAssessmentData;
 
@@ -888,19 +922,11 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
         if (existingDataList.isEmpty()) {
             return Constants.USER_ASSESSMENT_DATA_NOT_PRESENT;
-        } else {
-            existingAssessmentData.putAll(existingDataList.get(0));
         }
+        existingAssessmentData.putAll(existingDataList.get(0));
 
-        Object startTimeObj = existingAssessmentData.get(Constants.START_TIME);
-        Instant assessmentStartTime;
-        if (startTimeObj instanceof Date date) {
-            assessmentStartTime = date.toInstant();
-        } else if (startTimeObj instanceof Instant instant) {
-            assessmentStartTime = instant;
-        } else if (startTimeObj instanceof String startTime) {
-            assessmentStartTime = Instant.parse(startTime);
-        } else {
+        Instant assessmentStartTime = resolveAssessmentStartTime(existingAssessmentData.get(Constants.START_TIME));
+        if (assessmentStartTime == null) {
             return Constants.READ_ASSESSMENT_START_TIME_FAILED;
         }
         Integer expectedDuration = (Integer) assessmentHierarchy.get(Constants.EXPECTED_DURATION);
@@ -911,28 +937,42 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
         Instant submissionTime = Instant.now();
 
-        if (submissionTime.isBefore(allowedSubmitTime) || submissionTime.equals(allowedSubmitTime)) {
-            List<String> desiredKeys = List.of(Constants.IDENTIFIER);
-
-            List<Object> hierarchySectionIds = submitData.hierarchySectionList.stream()
-                    .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
-
-            List<Object> submitSectionIds = submitData.sectionListFromSubmitRequest.stream()
-                    .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
-
-            if (!new HashSet<>(hierarchySectionIds).containsAll(submitSectionIds)) {
-                return Constants.WRONG_SECTION_DETAILS;
-            } else {
-                String areQuestionIdsSame = validateIfQuestionIdsAreSame(submitData.sectionListFromSubmitRequest,
-                        desiredKeys, existingAssessmentData);
-                if (!areQuestionIdsSame.isEmpty())
-                    return areQuestionIdsSame;
-            }
-        } else {
+        if (submissionTime.isAfter(allowedSubmitTime)) {
             return Constants.ASSESSMENT_SUBMIT_EXPIRED;
         }
 
-        return "";
+        List<String> desiredKeys = List.of(Constants.IDENTIFIER);
+
+        List<Object> hierarchySectionIds = submitData.hierarchySectionList.stream()
+                .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
+
+        List<Object> submitSectionIds = submitData.sectionListFromSubmitRequest.stream()
+                .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
+
+        if (!new HashSet<>(hierarchySectionIds).containsAll(submitSectionIds)) {
+            return Constants.WRONG_SECTION_DETAILS;
+        }
+        return validateIfQuestionIdsAreSame(submitData.sectionListFromSubmitRequest, desiredKeys,
+                existingAssessmentData);
+    }
+
+    /**
+     * The stored assessment start time, which Cassandra may hand back as a {@link Date}, an
+     * {@link Instant} or an ISO-8601 string.
+     *
+     * @return the start time, or null when the stored value is none of those.
+     */
+    private Instant resolveAssessmentStartTime(Object startTimeObj) {
+        if (startTimeObj instanceof Date date) {
+            return date.toInstant();
+        }
+        if (startTimeObj instanceof Instant instant) {
+            return instant;
+        }
+        if (startTimeObj instanceof String startTime) {
+            return Instant.parse(startTime);
+        }
+        return null;
     }
 
 
@@ -940,39 +980,52 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
             List<String> desiredKeys, Map<String, Object> existingAssessmentData) throws IOException {
         String questionSetFromAssessmentString = (String) existingAssessmentData
                 .get(Constants.ASSESSMENT_READ_RESPONSE_KEY);
-        if (StringUtils.isNotBlank(questionSetFromAssessmentString)) {
-            Map<String, Object> questionSetFromAssessment = mapper.readValue(questionSetFromAssessmentString,
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            if (questionSetFromAssessment != null && questionSetFromAssessment.get(Constants.CHILDREN) != null) {
-                List<Map<String, Object>> sections = (List<Map<String, Object>>) questionSetFromAssessment
-                        .get(Constants.CHILDREN);
-                List<String> desiredKey = List.of(Constants.CHILD_NODES);
-                List<Object> questionList = sections.stream()
-                        .flatMap(x -> desiredKey.stream().filter(x::containsKey).map(x::get)).toList();
-                List<Object> questionIdsFromAssessmentHierarchy = new ArrayList<>();
-                List<Map<String, Object>> questionsListFromSubmitRequest = new ArrayList<>();
-                for (Object question : questionList) {
-                    questionIdsFromAssessmentHierarchy.addAll((List<String>) question);
-                }
-                for (Map<String, Object> userSectionData : sectionListFromSubmitRequest) {
-                    if (userSectionData.containsKey(Constants.CHILDREN)
-                            && !ObjectUtils.isEmpty(userSectionData.get(Constants.CHILDREN))) {
-                        questionsListFromSubmitRequest
-                                .addAll((List<Map<String, Object>>) userSectionData.get(Constants.CHILDREN));
-                    }
-                }
-                List<Object> userQuestionIdsFromSubmitRequest = questionsListFromSubmitRequest.stream()
-                        .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get))
-                        .toList();
-                if (!new HashSet<>(questionIdsFromAssessmentHierarchy).containsAll(userQuestionIdsFromSubmitRequest)) {
-                    return Constants.ASSESSMENT_SUBMIT_INVALID_QUESTION;
-                }
-            }
-        } else {
+        if (StringUtils.isBlank(questionSetFromAssessmentString)) {
             return Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED;
         }
+        Map<String, Object> questionSetFromAssessment = mapper.readValue(questionSetFromAssessmentString,
+                new TypeReference<Map<String, Object>>() {
+                });
+        if (questionSetFromAssessment == null || questionSetFromAssessment.get(Constants.CHILDREN) == null) {
+            return "";
+        }
+        List<Object> questionIdsFromAssessmentHierarchy = collectHierarchyQuestionIds(questionSetFromAssessment);
+        List<Object> userQuestionIdsFromSubmitRequest =
+                collectSubmittedQuestionIds(sectionListFromSubmitRequest, desiredKeys);
+        if (!new HashSet<>(questionIdsFromAssessmentHierarchy).containsAll(userQuestionIdsFromSubmitRequest)) {
+            return Constants.ASSESSMENT_SUBMIT_INVALID_QUESTION;
+        }
         return "";
+    }
+
+    /** Flattens the child-node ids declared by every section of the stored question set. */
+    private List<Object> collectHierarchyQuestionIds(Map<String, Object> questionSetFromAssessment) {
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) questionSetFromAssessment
+                .get(Constants.CHILDREN);
+        List<String> desiredKey = List.of(Constants.CHILD_NODES);
+        List<Object> questionList = sections.stream()
+                .flatMap(x -> desiredKey.stream().filter(x::containsKey).map(x::get)).toList();
+        List<Object> questionIdsFromAssessmentHierarchy = new ArrayList<>();
+        for (Object question : questionList) {
+            questionIdsFromAssessmentHierarchy.addAll((List<String>) question);
+        }
+        return questionIdsFromAssessmentHierarchy;
+    }
+
+    /** Flattens the question ids the user actually submitted, across every section of the request. */
+    private List<Object> collectSubmittedQuestionIds(List<Map<String, Object>> sectionListFromSubmitRequest,
+            List<String> desiredKeys) {
+        List<Map<String, Object>> questionsListFromSubmitRequest = new ArrayList<>();
+        for (Map<String, Object> userSectionData : sectionListFromSubmitRequest) {
+            if (userSectionData.containsKey(Constants.CHILDREN)
+                    && !ObjectUtils.isEmpty(userSectionData.get(Constants.CHILDREN))) {
+                questionsListFromSubmitRequest
+                        .addAll((List<Map<String, Object>>) userSectionData.get(Constants.CHILDREN));
+            }
+        }
+        return questionsListFromSubmitRequest.stream()
+                .flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get))
+                .toList();
     }
 
     public Map<String, Object> createResponseMapWithProperStructure(Map<String, Object> hierarchySection,
@@ -1038,60 +1091,72 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
                                                          Map<String, Object> questionSetFromAssessment,
                                                          Map<String, Object> result) throws ApplicationLogicError {
         Map<String, Object> submitRequest = eventContext.submitRequest();
-        String userId = eventContext.userId();
-        String userAuthToken = eventContext.userAuthToken();
-        String primaryCategory = eventContext.primaryCategory();
-        String courseCategory = eventContext.courseCategory();
         String contextCategory = eventContext.contextCategory();
-        boolean shouldUpdateContentProgress = eventContext.shouldUpdateContentProgress();
         try {
-            if (questionSetFromAssessment.get(Constants.START_TIME) != null) {
-                Instant startTime = assessUtilServ.parseStartTimeToInstant(questionSetFromAssessment.get(Constants.START_TIME));
-                Boolean isAssessmentUpdatedToDB = assessmentRepository.updateUserAssesmentDataToDB(userId,
-                        (String) submitRequest.get(Constants.IDENTIFIER), submitRequest, result, Constants.SUBMITTED,
-                        startTime,null);
-                if (Boolean.TRUE.equals(isAssessmentUpdatedToDB) && proceedWithContentUpdate(contextCategory, courseCategory, (boolean) result.get(Constants.PASS))) {
-                    if (shouldUpdateContentProgress) {
-                        SBApiResponse contentUpdateResponse = new SBApiResponse();
-                        if(StringUtils.isNotBlank(contextCategory) && contextCategory.equalsIgnoreCase(Constants.PRE_ENROLLED_ASSESSMENT_KEY)){
-                            contentService.updatePreEnrolledAssessment(userAuthToken, submitRequest, userId, contentUpdateResponse);
-                        }else {
-                            contentService.updateContentProgress(userAuthToken, submitRequest, userId, contentUpdateResponse);
-                        }
-                    }
-                    Map<String, Object> kafkaResult = new HashMap<>();
-                    kafkaResult.put(Constants.CONTENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
-                    kafkaResult.put(Constants.COURSE_ID,
-                            submitRequest.get(Constants.COURSE_ID) != null ? submitRequest.get(Constants.COURSE_ID)
-                                    : "");
-                    kafkaResult.put(Constants.BATCH_ID,
-                            submitRequest.get(Constants.BATCH_ID) != null ? submitRequest.get(Constants.BATCH_ID) : "");
-                    kafkaResult.put(Constants.USER_ID, submitRequest.get(Constants.USER_ID));
-                    kafkaResult.put(Constants.ASSESSMENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
-                    kafkaResult.put(Constants.PRIMARY_CATEGORY, primaryCategory);
-                    kafkaResult.put(Constants.TOTAL_SCORE, result.get(Constants.OVERALL_RESULT));
-                    if ((primaryCategory.equalsIgnoreCase("Competency Assessment")
-                            && submitRequest.containsKey(Constants.COMPETENCIES_V3)
-                            && submitRequest.get(Constants.COMPETENCIES_V3) != null)) {
-                        ObjectMapper objectMapper = new ObjectMapper(); //Updated for Json Import
-                        List<Map<String, Object>> competencyList = objectMapper.readValue(
-                                (String) submitRequest.get(Constants.COMPETENCIES_V3),
-                                new TypeReference<List<Map<String, Object>>>() {
-                                }
-                        );
-
-                        if (!competencyList.isEmpty()) {
-                            kafkaResult.put(Constants.COMPETENCY, competencyList.get(0));  // First competency map
-                        } else {
-                            kafkaResult.put(Constants.COMPETENCY, "");
-                        }
-                    }
-                    kafkaProducer.push(serverProperties.getAssessmentSubmitTopic(), kafkaResult);
-                }
+            if (questionSetFromAssessment.get(Constants.START_TIME) == null) {
+                return;
             }
+            Instant startTime = assessUtilServ.parseStartTimeToInstant(questionSetFromAssessment.get(Constants.START_TIME));
+            Boolean isAssessmentUpdatedToDB = assessmentRepository.updateUserAssesmentDataToDB(eventContext.userId(),
+                    (String) submitRequest.get(Constants.IDENTIFIER), submitRequest, result, Constants.SUBMITTED,
+                    startTime,null);
+            if (!Boolean.TRUE.equals(isAssessmentUpdatedToDB)
+                    || !proceedWithContentUpdate(contextCategory, eventContext.courseCategory(),
+                            (boolean) result.get(Constants.PASS))) {
+                return;
+            }
+            if (eventContext.shouldUpdateContentProgress()) {
+                updateContentProgressForContext(eventContext);
+            }
+            kafkaProducer.push(serverProperties.getAssessmentSubmitTopic(), buildSubmitEvent(eventContext, result));
         } catch (Exception e) {
             logger.error("Failed to write data for assessment submit response. Exception: ", e);
         }
+    }
+
+    /** Routes the progress update to the pre-enrolled endpoint or the standard content endpoint. */
+    private void updateContentProgressForContext(KafkaEventContext eventContext) {
+        SBApiResponse contentUpdateResponse = new SBApiResponse();
+        String contextCategory = eventContext.contextCategory();
+        if (StringUtils.isNotBlank(contextCategory)
+                && contextCategory.equalsIgnoreCase(Constants.PRE_ENROLLED_ASSESSMENT_KEY)) {
+            contentService.updatePreEnrolledAssessment(eventContext.userAuthToken(), eventContext.submitRequest(),
+                    eventContext.userId(), contentUpdateResponse);
+        } else {
+            contentService.updateContentProgress(eventContext.userAuthToken(), eventContext.submitRequest(),
+                    eventContext.userId(), contentUpdateResponse);
+        }
+    }
+
+    /** Builds the assessment-submit payload published to Kafka. */
+    private Map<String, Object> buildSubmitEvent(KafkaEventContext eventContext, Map<String, Object> result)
+            throws JsonProcessingException {
+        Map<String, Object> submitRequest = eventContext.submitRequest();
+        String primaryCategory = eventContext.primaryCategory();
+        Map<String, Object> kafkaResult = new HashMap<>();
+        kafkaResult.put(Constants.CONTENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
+        kafkaResult.put(Constants.COURSE_ID,
+                submitRequest.get(Constants.COURSE_ID) != null ? submitRequest.get(Constants.COURSE_ID)
+                        : "");
+        kafkaResult.put(Constants.BATCH_ID,
+                submitRequest.get(Constants.BATCH_ID) != null ? submitRequest.get(Constants.BATCH_ID) : "");
+        kafkaResult.put(Constants.USER_ID, submitRequest.get(Constants.USER_ID));
+        kafkaResult.put(Constants.ASSESSMENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
+        kafkaResult.put(Constants.PRIMARY_CATEGORY, primaryCategory);
+        kafkaResult.put(Constants.TOTAL_SCORE, result.get(Constants.OVERALL_RESULT));
+        if (("Competency Assessment".equalsIgnoreCase(primaryCategory)
+                && submitRequest.containsKey(Constants.COMPETENCIES_V3)
+                && submitRequest.get(Constants.COMPETENCIES_V3) != null)) {
+            ObjectMapper objectMapper = new ObjectMapper(); //Updated for Json Import
+            List<Map<String, Object>> competencyList = objectMapper.readValue(
+                    (String) submitRequest.get(Constants.COMPETENCIES_V3),
+                    new TypeReference<List<Map<String, Object>>>() {
+                    }
+            );
+            // First competency map, or an empty marker when none were submitted
+            kafkaResult.put(Constants.COMPETENCY, competencyList.isEmpty() ? "" : competencyList.get(0));
+        }
+        return kafkaResult;
     }
 
     private Map<String, Object> calculateSectionFinalResults(List<Map<String, Object>> sectionLevelResults) throws ApplicationLogicError {

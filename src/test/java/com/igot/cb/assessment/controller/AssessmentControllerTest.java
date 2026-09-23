@@ -72,7 +72,7 @@ class AssessmentControllerTest {
     }
 
     @Test
-    void getAssessmentContent() throws Exception {
+    void getAssessmentContent() {
         Map<String, Object> result = Collections.singletonMap("content", "questions");
         when(assessmentService.getAssessmentContent(anyString(), anyString())).thenReturn(result);
 

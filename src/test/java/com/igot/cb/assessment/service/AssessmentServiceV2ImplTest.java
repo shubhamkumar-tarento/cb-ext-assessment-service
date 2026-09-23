@@ -290,7 +290,7 @@ class AssessmentServiceV2ImplTest {
 
     // -ve: retakeAssessment with invalid token
     @Test
-    void testRetakeAssessment_invalidToken() throws Exception {
+    void testRetakeAssessment_invalidToken() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(null);
 
         SBApiResponse response = assessmentServiceV2.retakeAssessment(ASSESSMENT_ID, TOKEN);
@@ -301,7 +301,7 @@ class AssessmentServiceV2ImplTest {
 
     // -ve: retakeAssessment throws exception
     @Test
-    void testRetakeAssessment_exception() throws Exception {
+    void testRetakeAssessment_exception() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenThrow(new RuntimeException("DB error"));
 
         SBApiResponse response = assessmentServiceV2.retakeAssessment(ASSESSMENT_ID, TOKEN);
@@ -1461,5 +1461,693 @@ class AssessmentServiceV2ImplTest {
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertTrue(response.getParams().getErrmsg().contains("Assessment hierarchy read failed, failed to process request"));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Additional coverage: flows exercised with a real ObjectMapper so JSON round-trips are genuine
+    // ---------------------------------------------------------------------------------------------
+
+    private static final ObjectMapper REAL_MAPPER = new ObjectMapper();
+    private static final String SUBMIT_ID = "assess1";
+
+    private AssessmentServiceV2Impl realMapperService() {
+        return new AssessmentServiceV2Impl(assessUtilServ, serverProperties, producer, assessmentRepository,
+                redisCacheMgr, outboundRequestHandlerService, REAL_MAPPER, accessTokenValidator);
+    }
+
+    private static String json(Object value) throws JsonProcessingException {
+        return REAL_MAPPER.writeValueAsString(value);
+    }
+
+    private static Map<String, Object> mapOf(Object... keyValues) {
+        Map<String, Object> map = new HashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            map.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return map;
+    }
+
+    private void stubHierarchyInCache(String assessmentId, Map<String, Object> hierarchy) throws JsonProcessingException {
+        when(redisCacheMgr.getCache(Constants.ASSESSMENT_ID + assessmentId)).thenReturn(json(hierarchy));
+    }
+
+    private Map<String, Object> simpleHierarchy(String primaryCategory) {
+        return mapOf(Constants.IDENTIFIER, ASSESSMENT_ID, Constants.PRIMARY_CATEGORY, primaryCategory,
+                Constants.EXPECTED_DURATION, 120, Constants.CHILDREN, new ArrayList<>());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testReadAssessment_resumeFromUserCache_withInstantEndTime() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(ASSESSMENT_ID, simpleHierarchy("Assessment"));
+        Map<String, Object> dbData = mapOf(Constants.STATUS, Constants.NOT_SUBMITTED,
+                Constants.END_TIME, Instant.now().plusSeconds(600));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(dbData));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + ASSESSMENT_ID + "_" + TOKEN))
+                .thenReturn("{\"identifier\":\"assess123\",\"cached\":true}");
+
+        SBApiResponse response = service.readAssessment(ASSESSMENT_ID, TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        Map<String, Object> questionSet = (Map<String, Object>) response.getResult().get(Constants.QUESTION_SET);
+        assertEquals(Boolean.TRUE, questionSet.get("cached"));
+        assertEquals(ASSESSMENT_ID, questionSet.get(Constants.IDENTIFIER));
+        verify(assessmentRepository, never()).addUserAssesmentDataToDB(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testReadAssessment_submittedWithinWindow_restartFailsToPersist() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(ASSESSMENT_ID, simpleHierarchy("Assessment"));
+        Map<String, Object> dbData = mapOf(Constants.STATUS, Constants.SUBMITTED,
+                Constants.END_TIME, Date.from(Instant.now().plusSeconds(600)));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(dbData));
+        when(assessmentRepository.addUserAssesmentDataToDB(any(), any(), any(), any(), any(), any())).thenReturn(false);
+
+        SBApiResponse response = service.readAssessment(ASSESSMENT_ID, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_DATA_START_TIME_NOT_UPDATED, response.getParams().getErrmsg());
+        assertTrue(response.getResult().containsKey(Constants.QUESTION_SET));
+        verify(assessmentRepository).addUserAssesmentDataToDB(eq(USER_ID), eq(ASSESSMENT_ID), any(), any(), any(),
+                eq(Constants.NOT_SUBMITTED));
+        verify(redisCacheMgr).putCache(eq(Constants.USER_ASSESS_REQ + ASSESSMENT_ID + "_" + TOKEN), any());
+    }
+
+    @Test
+    void testReadAssessment_unknownStatusWithinWindow_returnsNoQuestionSet() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(ASSESSMENT_ID, simpleHierarchy("Assessment"));
+        Map<String, Object> dbData = mapOf(Constants.STATUS, "IN PROGRESS",
+                Constants.END_TIME, Date.from(Instant.now().plusSeconds(600)));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(dbData));
+
+        SBApiResponse response = service.readAssessment(ASSESSMENT_ID, TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertFalse(response.getResult().containsKey(Constants.QUESTION_SET));
+        verify(assessmentRepository, never()).addUserAssesmentDataToDB(any(), any(), any(), any(), any(), any());
+    }
+
+    // ----- readQuestionList -----
+
+    private Map<String, Object> questionListRequest(List<String> ids) {
+        Map<String, Object> search = mapOf(Constants.IDENTIFIER, ids);
+        Map<String, Object> request = mapOf(Constants.SEARCH, search);
+        return mapOf(Constants.REQUEST, request, Constants.ASSESSMENT_ID_KEY, SUBMIT_ID);
+    }
+
+    private Map<String, Object> userAssessment(String identifier, String primaryCategory, List<String> childNodes) {
+        return mapOf(Constants.IDENTIFIER, identifier, Constants.PRIMARY_CATEGORY, primaryCategory,
+                Constants.CHILDREN, List.of(mapOf(Constants.IDENTIFIER, "s1", Constants.CHILD_NODES, childNodes)));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testReadQuestionList_allQuestionsResolved_fromCacheAndService() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, "Assessment"));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN))
+                .thenReturn(json(userAssessment(SUBMIT_ID, "Assessment", List.of("q1", "q2"))));
+        when(redisCacheMgr.mget(List.of("q1", "q2"))).thenReturn(Arrays.asList("{\"identifier\":\"q1\"}", ""));
+
+        Map<String, Object> q2 = mapOf(Constants.IDENTIFIER, "q2");
+        List<Map<String, Object>> fetched = List.of(
+                new HashMap<>(),
+                mapOf(Constants.RESULT, mapOf(Constants.QUESTIONS, new ArrayList<>())),
+                mapOf(Constants.RESULT, mapOf(Constants.QUESTIONS, List.of(new HashMap<>(), q2))));
+        when(assessUtilServ.readQuestionDetails(List.of("q2"))).thenReturn(fetched);
+        when(assessUtilServ.filterQuestionMapDetail(any(), eq("Assessment"), eq(true)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1", "q2")), TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        List<Map<String, Object>> questions = (List<Map<String, Object>>) response.getResult().get(Constants.QUESTIONS);
+        assertEquals(2, questions.size());
+        assertEquals("q1", questions.get(0).get(Constants.IDENTIFIER));
+        assertEquals("q2", questions.get(1).get(Constants.IDENTIFIER));
+        verify(redisCacheMgr).putCache(Constants.QUESTION_ID + "q2", q2);
+    }
+
+    @Test
+    void testReadQuestionList_invalidCachedQuestionJson_returnsException() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, "Assessment"));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN))
+                .thenReturn(json(userAssessment(SUBMIT_ID, "Assessment", List.of("q1"))));
+        when(redisCacheMgr.mget(List.of("q1"))).thenReturn(List.of("not-a-json"));
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1")), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErrmsg().startsWith("Failed to fetch the question list. Exception:"));
+        assertFalse(response.getResult().containsKey(Constants.QUESTIONS));
+    }
+
+    @Test
+    void testReadQuestionList_practiceSetWithoutUserCopy_fails() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, Constants.PRACTICE_QUESTION_SET));
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1")), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErrmsg().startsWith("Failed to fetch the question list"));
+        verify(assessmentRepository, never()).fetchUserAssessmentDataFromDB(anyString(), anyString());
+    }
+
+    @Test
+    void testReadQuestionList_noUserAssessmentData() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, "Assessment"));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID)).thenReturn(new ArrayList<>());
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1")), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.USER_ASSESSMENT_DATA_NOT_PRESENT, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testReadQuestionList_assessmentIdMismatch() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, "Assessment"));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN))
+                .thenReturn(json(userAssessment("otherAssessment", "Assessment", List.of("q1"))));
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1")), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_ID_INVALID, response.getParams().getErrmsg());
+        verify(redisCacheMgr, never()).mget(anyList());
+    }
+
+    @Test
+    void testReadQuestionList_questionIdsNotInAssessment() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, mapOf(Constants.PRIMARY_CATEGORY, "Assessment"));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN))
+                .thenReturn(json(userAssessment(SUBMIT_ID, "Assessment", List.of("q1"))));
+
+        SBApiResponse response = service.readQuestionList(questionListRequest(List.of("q1", "q9")), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.THE_QUESTIONS_IDS_PROVIDED_DONT_MATCH, response.getParams().getErrmsg());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testGetQuestionIdList_malformedRequests() throws Exception {
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod("getQuestionIdList", Map.class);
+        method.setAccessible(true);
+
+        // request present but without a search block
+        List<String> result = (List<String>) method.invoke(assessmentServiceV2,
+                mapOf(Constants.REQUEST, mapOf("filters", "x")));
+        assertTrue(result.isEmpty());
+        // empty search block
+        result = (List<String>) method.invoke(assessmentServiceV2,
+                mapOf(Constants.REQUEST, mapOf(Constants.SEARCH, new HashMap<>())));
+        assertTrue(result.isEmpty());
+        // search block without identifier
+        result = (List<String>) method.invoke(assessmentServiceV2,
+                mapOf(Constants.REQUEST, mapOf(Constants.SEARCH, mapOf("name", "x"))));
+        assertTrue(result.isEmpty());
+        // request of the wrong type triggers the exception handler
+        result = (List<String>) method.invoke(assessmentServiceV2, mapOf(Constants.REQUEST, "not-a-map"));
+        assertTrue(result.isEmpty());
+    }
+
+    // ----- submitAssessment -----
+
+    private Map<String, Object> hierarchySection(String id) {
+        return mapOf(Constants.IDENTIFIER, id, Constants.MINIMUM_PASS_PERCENTAGE, 50,
+                Constants.OBJECT_TYPE, "QuestionSet", Constants.PRIMARY_CATEGORY, "Section");
+    }
+
+    private Map<String, Object> submitHierarchy(String primaryCategory, String cutOff, List<String> sectionIds) {
+        List<Map<String, Object>> sections = new ArrayList<>();
+        for (String id : sectionIds) {
+            sections.add(hierarchySection(id));
+        }
+        return mapOf(Constants.IDENTIFIER, SUBMIT_ID, Constants.PRIMARY_CATEGORY, primaryCategory,
+                Constants.SCORE_CUTOFF_TYPE, cutOff, Constants.EXPECTED_DURATION, 120, Constants.CHILDREN, sections);
+    }
+
+    private Map<String, Object> submitRequest(List<Map<String, Object>> sections) {
+        return mapOf(Constants.IDENTIFIER, SUBMIT_ID, Constants.CHILDREN, sections);
+    }
+
+    private Map<String, Object> submittedSection(String id, String... questionIds) {
+        Map<String, Object> section = mapOf(Constants.IDENTIFIER, id);
+        if (questionIds.length > 0) {
+            List<Map<String, Object>> questions = new ArrayList<>();
+            for (String q : questionIds) {
+                questions.add(mapOf(Constants.IDENTIFIER, q));
+            }
+            section.put(Constants.CHILDREN, questions);
+        }
+        return section;
+    }
+
+    private Map<String, Object> dbRecord(String status, Date startTime, String readResponse) {
+        return mapOf(Constants.STATUS, status, Constants.START_TIME, startTime,
+                Constants.ASSESSMENT_READ_RESPONSE_KEY, readResponse);
+    }
+
+    private String storedQuestionSet() throws JsonProcessingException {
+        return json(mapOf(Constants.CHILDREN, List.of(
+                mapOf(Constants.IDENTIFIER, "s1", Constants.CHILD_NODES, List.of("q1")),
+                mapOf(Constants.IDENTIFIER, "s2", Constants.CHILD_NODES, List.of("q2")))));
+    }
+
+    private SBApiResponse submitWithDbRecord(Map<String, Object> hierarchy, Map<String, Object> request,
+                                            Map<String, Object> record) throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, hierarchy);
+        lenient().when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID)).thenReturn(List.of(record));
+        return service.submitAssessment(request, TOKEN, false);
+    }
+
+    @Test
+    void testSubmitAssessment_emptyHierarchy() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        when(redisCacheMgr.getCache(Constants.ASSESSMENT_ID + SUBMIT_ID)).thenReturn("{}");
+
+        SBApiResponse response = service.submitAssessment(submitRequest(new ArrayList<>()), TOKEN, false);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.READ_ASSESSMENT_FAILED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_noUserAssessmentRecord() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID)).thenReturn(new ArrayList<>());
+
+        SBApiResponse response = service.submitAssessment(submitRequest(new ArrayList<>()), TOKEN, false);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.USER_ASSESSMENT_DATA_NOT_PRESENT, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_alreadySubmitted() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(new ArrayList<>()), dbRecord(Constants.SUBMITTED, new Date(), storedQuestionSet()));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_ALREADY_SUBMITTED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_missingStartTime() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(new ArrayList<>()), dbRecord(Constants.NOT_SUBMITTED, null, storedQuestionSet()));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.READ_ASSESSMENT_START_TIME_FAILED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_expired() throws Exception {
+        Date longAgo = Date.from(Instant.now().minusSeconds(24 * 3600));
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(new ArrayList<>()), dbRecord(Constants.NOT_SUBMITTED, longAgo, storedQuestionSet()));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_SUBMIT_EXPIRED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_defaultsSubmissionDuration_andRejectsUnknownSection() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("", "120");
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet())));
+
+        SBApiResponse response = service.submitAssessment(
+                submitRequest(List.of(submittedSection("unknownSection", "q1"))), TOKEN, false);
+
+        verify(serverProperties).setUserAssessmentSubmissionDuration("120");
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.WRONG_SECTION_DETAILS, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_blankStoredQuestionSet() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(List.of(submittedSection("s1", "q1"))),
+                dbRecord(Constants.NOT_SUBMITTED, new Date(), " "));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_questionNotInStoredSet() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(List.of(submittedSection("s1", "q1", "q99"))),
+                dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet()));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_SUBMIT_INVALID_QUESTION, response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_nullStoredQuestionSet_sectionLevel() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.SECTION_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(List.of(submittedSection("s1", "q1"))),
+                dbRecord(Constants.NOT_SUBMITTED, new Date(), "null"));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Question Set From The Database returns Null", response.getParams().getErrmsg());
+        assertTrue(response.getResult().isEmpty());
+        verify(assessUtilServ, never()).validateQumlAssessment(any(), any(), any());
+        verify(producer, never()).push(anyString(), any());
+    }
+
+    @Test
+    void testSubmitAssessment_storedQuestionSetWithoutSections() throws Exception {
+        SBApiResponse response = submitWithDbRecord(
+                submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")),
+                submitRequest(List.of(submittedSection("s1", "q1"))),
+                dbRecord(Constants.NOT_SUBMITTED, new Date(), "{}"));
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Question Set From The Database returns Null", response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSubmitAssessment_storedRecordMissingDuringQuestionValidation() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        List<Map<String, Object>> records = List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet()));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(records, new ArrayList<>());
+
+        SBApiResponse response = service.submitAssessment(
+                submitRequest(List.of(submittedSection("s1", "q1"))), TOKEN, false);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED, response.getParams().getErrmsg());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testBuildSubmitEvent_competencyAssessmentWithoutCompetencies() throws Exception {
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod("buildSubmitEvent", Map.class, Map.class,
+                String.class);
+        method.setAccessible(true);
+        Map<String, Object> result = mapOf(Constants.OVERALL_RESULT, 75.0);
+
+        // key absent
+        Map<String, Object> event = (Map<String, Object>) method.invoke(assessmentServiceV2,
+                mapOf(Constants.IDENTIFIER, SUBMIT_ID), result, "Competency Assessment");
+        assertFalse(event.containsKey(Constants.COMPETENCY));
+        assertEquals(SUBMIT_ID, event.get(Constants.CONTENT_ID_KEY));
+        assertEquals(75.0, event.get(Constants.TOTAL_SCORE));
+
+        // key present but null
+        event = (Map<String, Object>) method.invoke(assessmentServiceV2,
+                mapOf(Constants.IDENTIFIER, SUBMIT_ID, Constants.COMPETENCIES_V3, null), result, "Competency Assessment");
+        assertFalse(event.containsKey(Constants.COMPETENCY));
+        assertEquals("Competency Assessment", event.get(Constants.PRIMARY_CATEGORY));
+    }
+
+    @Test
+    void testSubmitAssessment_storedRecordDisappearsBeforeScoring() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        List<Map<String, Object>> records = List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet()));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(records, records, new ArrayList<>());
+
+        SBApiResponse response = service.submitAssessment(
+                submitRequest(List.of(submittedSection("s1", "q1"))), TOKEN, false);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Question Set From The Database returns Null", response.getParams().getErrmsg());
+        verify(assessmentRepository, times(3)).fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testSubmitAssessment_competencyAssessment_assessmentLevel_pushesCompetency() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Competency Assessment", "AssessmentLevel", List.of("s1")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        when(serverProperties.getAssessmentSubmitTopic()).thenReturn("submit-topic");
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet())));
+        // user's in-progress question set is still cached
+        Map<String, Object> cachedSet = mapOf(Constants.START_TIME, 1700000000000L, Constants.CHILDREN, List.of(
+                mapOf(Constants.IDENTIFIER, "s1", Constants.CHILD_NODES, List.of("q1"))));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN)).thenReturn(json(cachedSet));
+        when(assessUtilServ.validateQumlAssessment(any(), any(), any())).thenReturn(
+                mapOf(Constants.RESULT, 100.0, Constants.TOTAL, 1, Constants.BLANK, 0, Constants.CORRECT, 1,
+                        Constants.INCORRECT, 0));
+        Instant start = Instant.ofEpochMilli(1700000000000L);
+        when(assessUtilServ.parseStartTimeToInstant(any())).thenReturn(start);
+        when(assessmentRepository.updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        Map<String, Object> request = submitRequest(List.of(submittedSection("s1", "q1")));
+        request.put(Constants.COURSE_ID, "course1");
+        request.put(Constants.BATCH_ID, "batch1");
+        request.put(Constants.COMPETENCIES_V3, "[{\"id\":\"comp1\"},{\"id\":\"comp2\"}]");
+
+        SBApiResponse response = service.submitAssessment(request, TOKEN, false);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(100.0, response.getResult().get(Constants.OVERALL_RESULT));
+        assertEquals(Boolean.TRUE, response.getResult().get(Constants.PASS));
+        verify(assessUtilServ).validateQumlAssessment(eq(List.of("q1")), any(), any());
+        verify(assessmentRepository).updateUserAssesmentDataToDB(eq(USER_ID), eq(SUBMIT_ID), eq(request), any(),
+                eq(Constants.SUBMITTED), eq(start), isNull());
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(producer).push(eq("submit-topic"), eventCaptor.capture());
+        Map<String, Object> event = (Map<String, Object>) eventCaptor.getValue();
+        assertEquals("course1", event.get(Constants.COURSE_ID));
+        assertEquals("batch1", event.get(Constants.BATCH_ID));
+        assertEquals(USER_ID, event.get(Constants.USER_ID));
+        assertEquals(100.0, event.get(Constants.TOTAL_SCORE));
+        assertEquals(Map.of("id", "comp1"), event.get(Constants.COMPETENCY));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testSubmitAssessment_competencyAssessment_sectionLevel_emptyCompetencies() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Competency Assessment", Constants.SECTION_LEVEL_SCORE_CUTOFF,
+                List.of("s1", "s2")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        when(serverProperties.getAssessmentSubmitTopic()).thenReturn("submit-topic");
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet())));
+        // cached copy: s2 carries no child nodes, so it falls back to the previous section's ids
+        Map<String, Object> cachedSet = mapOf(Constants.START_TIME, 1700000000000L, Constants.CHILDREN, List.of(
+                mapOf(Constants.IDENTIFIER, "s1", Constants.CHILD_NODES, List.of("q1")),
+                mapOf(Constants.IDENTIFIER, "s2")));
+        when(redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + SUBMIT_ID + "_" + TOKEN)).thenReturn(json(cachedSet));
+        when(assessUtilServ.validateQumlAssessment(any(), any(), any())).thenReturn(
+                mapOf(Constants.RESULT, 100.0, Constants.TOTAL, 1, Constants.BLANK, 0, Constants.CORRECT, 1,
+                        Constants.INCORRECT, 0),
+                mapOf(Constants.RESULT, 0.0, Constants.TOTAL, 1, Constants.BLANK, 1, Constants.CORRECT, 0,
+                        Constants.INCORRECT, 0));
+        when(assessUtilServ.parseStartTimeToInstant(any())).thenReturn(Instant.now());
+        when(assessmentRepository.updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        Map<String, Object> request = submitRequest(List.of(submittedSection("s1", "q1"), submittedSection("s2")));
+        request.put(Constants.COMPETENCIES_V3, "[]");
+
+        SBApiResponse response = service.submitAssessment(request, TOKEN, false);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(50.0, response.getResult().get(Constants.OVERALL_RESULT));
+        assertEquals(Boolean.FALSE, response.getResult().get(Constants.PASS));
+        assertEquals(2, response.getResult().get(Constants.TOTAL));
+        assertEquals(1, response.getResult().get(Constants.BLANK));
+        verify(assessUtilServ, times(2)).validateQumlAssessment(eq(List.of("q1")), any(), any());
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(producer).push(eq("submit-topic"), eventCaptor.capture());
+        Map<String, Object> event = (Map<String, Object>) eventCaptor.getValue();
+        assertEquals("", event.get(Constants.COMPETENCY));
+        assertEquals("", event.get(Constants.COURSE_ID));
+        assertEquals("", event.get(Constants.BATCH_ID));
+    }
+
+    @Test
+    void testSubmitAssessment_noSubmittedSections_fallsBackToCurrentIds() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy("Assessment", Constants.ASSESSMENT_LEVEL_SCORE_CUTOFF, List.of("s1")));
+        when(serverProperties.getUserAssessmentSubmissionDuration()).thenReturn("120");
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, SUBMIT_ID))
+                .thenReturn(List.of(dbRecord(Constants.NOT_SUBMITTED, new Date(), storedQuestionSet())));
+        when(assessUtilServ.validateQumlAssessment(any(), any(), any())).thenReturn(
+                mapOf(Constants.RESULT, 0.0, Constants.TOTAL, 1, Constants.BLANK, 1, Constants.CORRECT, 0,
+                        Constants.INCORRECT, 0));
+
+        SBApiResponse response = service.submitAssessment(submitRequest(new ArrayList<>()), TOKEN, false);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(Boolean.FALSE, response.getResult().get(Constants.PASS));
+        // no section matched, so the (empty) current question id list is used
+        verify(assessUtilServ).validateQumlAssessment(eq(new ArrayList<>()), eq(new ArrayList<>()), any());
+        // stored question set (from the DB) carries no start time, so nothing is persisted
+        verify(assessmentRepository, never()).updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testSubmitAssessment_practiceSetWithoutCutOffType() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(SUBMIT_ID, submitHierarchy(Constants.PRACTICE_QUESTION_SET, "", List.of("s1")));
+
+        SBApiResponse response = service.submitAssessment(
+                submitRequest(List.of(submittedSection("s1", "q1"))), TOKEN, false);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertTrue(response.getResult().isEmpty());
+        verify(assessUtilServ, never()).validateQumlAssessment(any(), any(), any());
+        verify(assessmentRepository, never()).fetchUserAssessmentDataFromDB(anyString(), anyString());
+    }
+
+    // ----- private helpers via reflection -----
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testCalculateAssessmentFinalResults_failAndException() throws Exception {
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod("calculateAssessmentFinalResults", Map.class);
+        method.setAccessible(true);
+
+        Map<String, Object> failing = mapOf(Constants.RESULT, 40.0, Constants.PASS_PERCENTAGE, 60, Constants.TOTAL, 5);
+        Map<String, Object> res = (Map<String, Object>) method.invoke(assessmentServiceV2, failing);
+        assertEquals(Boolean.FALSE, res.get(Constants.PASS));
+        assertEquals(40.0, res.get(Constants.OVERALL_RESULT));
+
+        Map<String, Object> broken = mapOf(Constants.PASS_PERCENTAGE, 60);
+        res = (Map<String, Object>) method.invoke(assessmentServiceV2, broken);
+        assertFalse(res.containsKey(Constants.PASS));
+        assertNull(res.get(Constants.OVERALL_RESULT));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testCalculateSectionFinalResults_failingSectionAndException() throws Exception {
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod("calculateSectionFinalResults", List.class);
+        method.setAccessible(true);
+
+        Map<String, Object> failing = mapOf(Constants.RESULT, 20.0, Constants.TOTAL, 5, Constants.BLANK, 1,
+                Constants.CORRECT, 1, Constants.INCORRECT, 3, Constants.PASS_PERCENTAGE, 50);
+        Map<String, Object> res = (Map<String, Object>) method.invoke(assessmentServiceV2, List.of(failing));
+        assertEquals(Boolean.FALSE, res.get(Constants.PASS));
+        assertEquals(20.0, res.get(Constants.OVERALL_RESULT));
+
+        Map<String, Object> broken = mapOf(Constants.RESULT, 20.0);
+        res = (Map<String, Object>) method.invoke(assessmentServiceV2, List.of(broken));
+        assertFalse(res.containsKey(Constants.OVERALL_RESULT));
+        assertFalse(res.containsKey(Constants.PASS));
+    }
+
+    @Test
+    void testWriteDataToDatabaseAndTriggerKafkaEvent_nullQuestionSet() throws Exception {
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod(
+                "writeDataToDatabaseAndTriggerKafkaEvent", Map.class, String.class, Map.class, Map.class, String.class);
+        method.setAccessible(true);
+        method.invoke(assessmentServiceV2, new HashMap<>(), USER_ID, null, new HashMap<>(), "Assessment");
+
+        verify(assessmentRepository, never()).updateUserAssesmentDataToDB(any(), any(), any(), any(), any(), any(), any());
+        verify(producer, never()).push(anyString(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testReadAssessmentLevelData_skipsMissingParams() throws Exception {
+        when(serverProperties.getAssessmentLevelParams()).thenReturn(List.of(Constants.IDENTIFIER, "missingParam"));
+        when(serverProperties.getAssessmentSectionParams()).thenReturn(List.of(Constants.IDENTIFIER, "missingSectionParam"));
+        Map<String, Object> section = mapOf(Constants.IDENTIFIER, "s1",
+                Constants.CHILDREN, List.of(mapOf(Constants.IDENTIFIER, "q1")));
+        Map<String, Object> detail = mapOf(Constants.IDENTIFIER, "a1", Constants.CHILDREN, List.of(section));
+
+        Method method = AssessmentServiceV2Impl.class.getDeclaredMethod("readAssessmentLevelData", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(assessmentServiceV2, detail);
+
+        assertEquals("a1", result.get(Constants.IDENTIFIER));
+        assertFalse(result.containsKey("missingParam"));
+        Map<String, Object> filteredSection = ((List<Map<String, Object>>) result.get(Constants.CHILDREN)).get(0);
+        assertEquals("s1", filteredSection.get(Constants.IDENTIFIER));
+        assertFalse(filteredSection.containsKey("missingSectionParam"));
+        // no maxQuestions configured -> no child nodes selected
+        assertEquals(new ArrayList<>(), filteredSection.get(Constants.CHILD_NODES));
+        assertEquals(List.of("s1"), result.get(Constants.CHILD_NODES));
+    }
+
+    // ----- retakeAssessment -----
+
+    @Test
+    void testRetakeAssessment_preEnrolmentAssessment() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(ASSESSMENT_ID, mapOf(Constants.CONTEXT_CATEGORY_TAG, Constants.PRE_ENROLLED_ASSESSMENT_KEY,
+                Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, 5));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(
+                mapOf(Constants.SUBMIT_ASSESSMENT_RESPONSE, "r1")));
+
+        SBApiResponse response = service.retakeAssessment(ASSESSMENT_ID, TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(1, response.getResult().get(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED));
+        assertEquals(0, response.getResult().get(Constants.RETAKE_ATTEMPTS_CONSUMED));
+    }
+
+    @Test
+    void testRetakeAssessment_withConfiguredMaxAttempts() throws Exception {
+        AssessmentServiceV2Impl service = realMapperService();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+        stubHierarchyInCache(ASSESSMENT_ID, mapOf(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, 3));
+        when(assessmentRepository.fetchUserAssessmentDataFromDB(USER_ID, ASSESSMENT_ID)).thenReturn(List.of(
+                mapOf(Constants.SUBMIT_ASSESSMENT_RESPONSE, "r1"),
+                mapOf(Constants.SUBMIT_ASSESSMENT_RESPONSE, "r2"),
+                mapOf(Constants.STATUS, Constants.NOT_SUBMITTED)));
+
+        SBApiResponse response = service.retakeAssessment(ASSESSMENT_ID, TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(3, response.getResult().get(Constants.TOTAL_RETAKE_ATTEMPTS_ALLOWED));
+        assertEquals(2, response.getResult().get(Constants.RETAKE_ATTEMPTS_CONSUMED));
     }
 }

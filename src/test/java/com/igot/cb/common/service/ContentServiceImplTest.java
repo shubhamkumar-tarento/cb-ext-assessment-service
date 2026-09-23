@@ -8,7 +8,9 @@ import com.igot.cb.common.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
+import org.slf4j.Logger;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 
 
 import java.util.*;
@@ -258,5 +260,182 @@ class ContentServiceImplTest {
         String result = contentService.updateContentProgress("token", reqBody, "user1", outgoing);
         assertEquals("", result);
         assertEquals(Constants.FAILED, outgoing.getParams().getStatus());
+    }
+
+    private Map<String, Object> progressRequestBody() {
+        Map<String, Object> reqBody = new HashMap<>();
+        reqBody.put(Constants.IDENTIFIER, "id1");
+        reqBody.put(Constants.COURSE_ID, "cid");
+        reqBody.put(Constants.BATCH_ID, "bid");
+        reqBody.put(Constants.LANGUAGE, "en");
+        return reqBody;
+    }
+
+    private void disableInfoLogging() {
+        Logger quietLogger = mock(Logger.class);
+        when(quietLogger.isInfoEnabled()).thenReturn(false);
+        ReflectionTestUtils.setField(contentService, "logger", quietLogger);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void testUpdateContentProgress_BuildsExpectedRequest() {
+        Map<String, Object> apiResponse = Map.of("responseCode", "OK");
+        when(outboundRequestHandlerService.fetchResultUsingPatch(anyString(), any(), any())).thenReturn(apiResponse);
+
+        contentService.updateContentProgress("token", progressRequestBody(), "user1", new SBApiResponse());
+
+        ArgumentCaptor<Object> requestCaptor = ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<Map<String, String>> headerCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(outboundRequestHandlerService).fetchResultUsingPatch(eq("http://host/progress"),
+                requestCaptor.capture(), headerCaptor.capture());
+        assertEquals("token", headerCaptor.getValue().get(Constants.X_AUTH_TOKEN));
+        assertEquals("api-key", headerCaptor.getValue().get(Constants.AUTHORIZATION));
+        Map<String, Object> request = (Map<String, Object>) ((Map<String, Object>) requestCaptor.getValue())
+                .get(Constants.REQUEST);
+        assertEquals("user1", request.get(Constants.USER_ID));
+        List<Map<String, Object>> contents = (List<Map<String, Object>>) request.get("contents");
+        assertEquals("id1", contents.get(0).get(Constants.CONTENT_ID_KEY));
+        assertEquals(2, contents.get(0).get(Constants.STATUS));
+    }
+
+    @Test
+    void testUpdateContentProgress_InfoLoggingDisabled() {
+        disableInfoLogging();
+        when(outboundRequestHandlerService.fetchResultUsingPatch(anyString(), any(), any()))
+                .thenReturn(Map.of("responseCode", "OK"))
+                .thenReturn(Map.of("responseCode", "FAILED"));
+
+        assertEquals(Constants.SUCCESS,
+                contentService.updateContentProgress("token", progressRequestBody(), "user1", new SBApiResponse()));
+        SBApiResponse outgoing = new SBApiResponse();
+        assertEquals("", contentService.updateContentProgress("token", progressRequestBody(), "user1", outgoing));
+        assertEquals(Constants.FAILED, outgoing.getParams().getStatus());
+        assertEquals(Constants.FAILED_TO_UPDATE_PROGRESS, outgoing.getParams().getErrmsg());
+    }
+
+    @Test
+    void testUpdatePreEnrolledAssessment_Success() {
+        when(serverConfig.getExtCourseServiceHost()).thenReturn("http://ext");
+        when(serverConfig.getContentStateUpdate()).thenReturn("/state");
+        when(outboundRequestHandlerService.fetchResultUsingPatch(anyString(), any(), any()))
+                .thenReturn(Map.of("responseCode", "OK"));
+
+        SBApiResponse outgoing = new SBApiResponse();
+        String result = contentService.updatePreEnrolledAssessment("token", progressRequestBody(), "user1", outgoing);
+
+        assertEquals(Constants.SUCCESS, result);
+        verify(outboundRequestHandlerService).fetchResultUsingPatch(eq("http://ext/state"), any(), any());
+    }
+
+    @Test
+    void testUpdatePreEnrolledAssessment_NotOk() {
+        when(serverConfig.getExtCourseServiceHost()).thenReturn("http://ext");
+        when(serverConfig.getContentStateUpdate()).thenReturn("/state");
+        when(outboundRequestHandlerService.fetchResultUsingPatch(anyString(), any(), any()))
+                .thenReturn(Map.of("responseCode", "CLIENT_ERROR"));
+
+        SBApiResponse outgoing = new SBApiResponse();
+        String result = contentService.updatePreEnrolledAssessment("token", progressRequestBody(), "user1", outgoing);
+
+        assertEquals("", result);
+        assertNull(outgoing.getResult());
+        assertEquals(Constants.FAILED, outgoing.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, outgoing.getResponseCode());
+    }
+
+    @Test
+    void testUpdatePreEnrolledAssessment_InfoLoggingDisabled() {
+        disableInfoLogging();
+        when(outboundRequestHandlerService.fetchResultUsingPatch(any(), any(), any()))
+                .thenReturn(Map.of("responseCode", "OK"))
+                .thenReturn(Map.of());
+
+        assertEquals(Constants.SUCCESS,
+                contentService.updatePreEnrolledAssessment("token", progressRequestBody(), "user1", new SBApiResponse()));
+        SBApiResponse outgoing = new SBApiResponse();
+        assertEquals("", contentService.updatePreEnrolledAssessment("token", progressRequestBody(), "user1", outgoing));
+        assertEquals(Constants.FAILED, outgoing.getParams().getStatus());
+    }
+
+    @Test
+    void testUpdatePreEnrolledAssessment_Exception() {
+        when(outboundRequestHandlerService.fetchResultUsingPatch(any(), any(), any()))
+                .thenThrow(new RuntimeException("patch failed"));
+
+        SBApiResponse outgoing = new SBApiResponse();
+        String result = contentService.updatePreEnrolledAssessment("token", progressRequestBody(), "user1", outgoing);
+
+        assertEquals("", result);
+        assertEquals(Constants.FAILED, outgoing.getParams().getStatus());
+        assertEquals(Constants.FAILED_TO_UPDATE_PROGRESS, outgoing.getParams().getErrmsg());
+    }
+
+    @Test
+    void testGetContentType_EmptyResultAndEmptyContent() {
+        when(outboundRequestHandlerService.fetchResult(anyString()))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, Constants.OK))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, Constants.OK,
+                        Constants.RESULT, Map.of(Constants.CONTENT, Map.of())));
+
+        assertEquals("", contentService.getContentType("res1"));
+        assertEquals("", contentService.getContentType("res1"));
+    }
+
+    @Test
+    void testGetParentIdentifier_NotOkEmptyResultAndEmptyContent() {
+        when(outboundRequestHandlerService.fetchResult(anyString()))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, "FAILED"))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, Constants.OK))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, Constants.OK,
+                        Constants.RESULT, Map.of(Constants.CONTENT, Map.of())));
+
+        assertEquals("", contentService.getParentIdentifier("res1"));
+        assertEquals("", contentService.getParentIdentifier("res1"));
+        assertEquals("", contentService.getParentIdentifier("res1"));
+        verify(outboundRequestHandlerService, times(3))
+                .fetchResult("http://content/hierarchy/res1?hierarchyType=detail");
+    }
+
+    @Test
+    void testReadContent_WithoutFieldsUsesBaseUrl() {
+        Map<String, Object> content = Map.of("name", "course");
+        when(outboundRequestHandlerService.fetchResult("http://content/read/cid?fields="))
+                .thenReturn(Map.of(Constants.RESPONSE_CODE, Constants.OK,
+                        Constants.RESULT, Map.of(Constants.CONTENT, content)));
+
+        assertEquals(content, contentService.readContent("cid"));
+    }
+
+    @Test
+    void testReadContent_WithFieldsAppendsFields() {
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(null);
+
+        contentService.readContent("cid", List.of("f1", "f2"));
+
+        verify(outboundRequestHandlerService).fetchResult("http://content/read/cid?fields=,f1,f2");
+    }
+
+    @Test
+    void testReadContentFromCache_DataCacheHasFewerFields_ProjectsRedisContent() {
+        when(dataCacheMgr.getContentFromCache("cid")).thenReturn(Map.of("field1", "v1"));
+        when(redisCacheMgr.getContentFromCache("cid")).thenReturn("{\"field1\":\"v1\",\"other\":\"x\"}");
+
+        Map<String, Object> result = contentService.readContentFromCache("cid", null);
+
+        // field2 is not present in redis and "other" was not requested
+        assertEquals(Map.of("field1", "v1"), result);
+        verify(dataCacheMgr).putContentInCache("cid", Map.of("field1", "v1"));
+    }
+
+    @Test
+    void testReadContentFromCache_RedisHasEmptyJson() {
+        when(dataCacheMgr.getContentFromCache("cid")).thenReturn(null);
+        when(redisCacheMgr.getContentFromCache("cid")).thenReturn("{}");
+
+        Map<String, Object> result = contentService.readContentFromCache("cid", List.of("field1"));
+
+        assertTrue(result.isEmpty());
+        verify(dataCacheMgr, never()).putContentInCache(anyString(), any());
     }
 }

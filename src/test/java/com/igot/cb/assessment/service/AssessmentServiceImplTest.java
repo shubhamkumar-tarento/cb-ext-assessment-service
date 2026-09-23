@@ -93,7 +93,7 @@ class AssessmentServiceImplTest {
     }
 
     @Test
-    void testGetAssessmentByContentUser_success() throws Exception {
+    void testGetAssessmentByContentUser_success() {
         Map<String, Object> assessmentRow = new HashMap<>();
         assessmentRow.put("result_percent", "75.0");
         assessmentRow.put("correct_count", 6);
@@ -112,9 +112,148 @@ class AssessmentServiceImplTest {
     }
 
     @Test
-    void testGetAssessmentByContentUser_nullPointer() throws Exception {
+    void testGetAssessmentByContentUser_nullPointer() {
         when(repository.getAssessmentbyContentUser(anyString(), anyString(), anyString())).thenThrow(NullPointerException.class);
         assertThrows(ApplicationLogicError.class, () -> assessmentService.getAssessmentByContentUser("rootOrg", "courseId", "userId"));
+    }
+
+    private Map<String, Object> buildResultMap() {
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("result", 40.0);
+        resultMap.put("correct", 4);
+        resultMap.put("blank", 1);
+        resultMap.put("incorrect", 5);
+        return resultMap;
+    }
+
+    @Test
+    void testSubmitAssessment_quiz_parentContentTypeEmpty() throws Exception {
+        AssessmentSubmissionDTO dto = new AssessmentSubmissionDTO();
+        dto.setIdentifier("quizId");
+        dto.setTitle("quiz");
+        dto.setIsAssessment(false);
+        dto.setQuestions(Collections.emptyList());
+
+        when(userUtilService.validateUser(anyString(), anyString())).thenReturn(true);
+        when(assessUtilServ.validateAssessment(anyList())).thenReturn(buildResultMap());
+        when(contentService.getParentIdentifier(anyString())).thenReturn("parentId");
+
+        Map<String, Object> result = assessmentService.submitAssessment("rootOrg", dto, "userId");
+        assertEquals(10, result.get("total"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(repository).insertQuizOrAssessment(captor.capture(), eq(false));
+        assertEquals("", captor.getValue().get(Constants.PARENT_CONTENT_TYPE));
+        verify(contentService, never()).getContentType(anyString());
+    }
+
+    @Test
+    void testSubmitAssessment_assessment_emptyParentId() throws Exception {
+        AssessmentSubmissionDTO dto = new AssessmentSubmissionDTO();
+        dto.setIdentifier("assessId");
+        dto.setTitle("title");
+        dto.setIsAssessment(true);
+        dto.setQuestions(Collections.emptyList());
+
+        when(userUtilService.validateUser(anyString(), anyString())).thenReturn(true);
+        when(assessUtilServ.validateAssessment(anyList())).thenReturn(buildResultMap());
+        when(contentService.getParentIdentifier(anyString())).thenReturn("");
+
+        Map<String, Object> result = assessmentService.submitAssessment("rootOrg", dto, "userId");
+        assertEquals(40.0, result.get("result"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(repository).insertQuizOrAssessment(captor.capture(), eq(true));
+        assertEquals("", captor.getValue().get(Constants.PARENT_CONTENT_TYPE));
+        verify(contentService, never()).getContentType(anyString());
+    }
+
+    private Map<String, Object> buildRow(String percent, String ts) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("result_percent", percent);
+        row.put("correct_count", 1);
+        row.put("incorrect_count", 1);
+        row.put("not_answered_count", 0);
+        row.put("ts_created", ts);
+        return row;
+    }
+
+    @Test
+    void testGetAssessmentByContentUser_multipleAttempts() {
+        // rows are newest first; the loop walks from oldest (last) to newest (first)
+        List<Map<String, Object>> repoResult = Arrays.asList(
+                buildRow("70.0", "t3"), buildRow("80.0", "t2"), buildRow("50.0", "t1"));
+        when(repository.getAssessmentbyContentUser(anyString(), anyString(), anyString())).thenReturn(repoResult);
+
+        Map<String, Object> result = assessmentService.getAssessmentByContentUser("rootOrg", "courseId", "userId");
+        assertEquals("t2", result.get("firstPassOn"));
+        assertEquals(2, result.get("attemptsToPass"));
+        assertEquals(new BigDecimal("80.00"), result.get("maxScore"));
+        assertEquals("t2", result.get("maxScoreAttainedOn"));
+        assertEquals(2, result.get("attemptsForMaxScore"));
+        assertEquals(3, ((List<?>) result.get("pastAssessments")).size());
+    }
+
+    @Test
+    void testGetAssessmentByContentUser_neverPassed() {
+        List<Map<String, Object>> repoResult = Arrays.asList(buildRow("30.0", "t2"), buildRow("40.0", "t1"));
+        when(repository.getAssessmentbyContentUser(anyString(), anyString(), anyString())).thenReturn(repoResult);
+
+        Map<String, Object> result = assessmentService.getAssessmentByContentUser("rootOrg", "courseId", "userId");
+        assertFalse(result.containsKey("firstPassOn"));
+        assertFalse(result.containsKey("attemptsToPass"));
+        assertEquals(new BigDecimal("40.00"), result.get("maxScore"));
+        assertEquals("t1", result.get("maxScoreAttainedOn"));
+        assertEquals(1, result.get("attemptsForMaxScore"));
+    }
+
+    @Test
+    void testGetAssessmentByContentUser_noAttempts() {
+        when(repository.getAssessmentbyContentUser(anyString(), anyString(), anyString()))
+                .thenReturn(Collections.emptyList());
+
+        Map<String, Object> result = assessmentService.getAssessmentByContentUser("rootOrg", "courseId", "userId");
+        assertEquals(1, result.size());
+        assertTrue(((List<?>) result.get("pastAssessments")).isEmpty());
+    }
+
+    @Test
+    void testGetAssessmentContent_cacheMiss_noMatchingChild() {
+        when(redisCacheMgr.getCache(anyString())).thenReturn(null);
+        when(extServerProperties.getKmBaseHost()).thenReturn("http://host/");
+        when(extServerProperties.getContentHierarchyDetailEndPoint()).thenReturn("endpoint/{courseId}/{hierarchyType}");
+        SunbirdApiResp apiResp = new SunbirdApiResp();
+        apiResp.setResponseCode("OK");
+        apiResp.setResult(new SunbirdApiRespResult());
+        SunbirdApiHierarchyResultContent otherChild = new SunbirdApiHierarchyResultContent();
+        otherChild.setIdentifier("otherId");
+        otherChild.setArtifactUrl("http://other.json");
+        SunbirdApiHierarchyResultContent nonJsonChild = new SunbirdApiHierarchyResultContent();
+        nonJsonChild.setIdentifier("assessmentContentId");
+        nonJsonChild.setArtifactUrl("http://artifact.pdf");
+        apiResp.getResult().setContent(new SunbirdApiHierarchyResultContent());
+        apiResp.getResult().getContent().setChildren(Arrays.asList(otherChild, nonJsonChild));
+
+        when(outboundRequestHandlerService.fetchUsingGetWithHeaders(anyString(), anyMap())).thenReturn(new HashMap<>());
+        when(mapper.convertValue(any(), eq(SunbirdApiResp.class))).thenReturn(apiResp);
+
+        Map<String, Object> result = assessmentService.getAssessmentContent("courseId", "assessmentContentId");
+        assertTrue(result.isEmpty());
+        verify(assessUtilServ, never()).removeAssessmentAnsKey(any());
+        verify(redisCacheMgr, never()).putCache(anyString(), any());
+    }
+
+    @Test
+    void testGetAssessmentContent_exception() {
+        when(redisCacheMgr.getCache(anyString())).thenReturn(null);
+        when(extServerProperties.getKmBaseHost()).thenReturn("http://host/");
+        when(extServerProperties.getContentHierarchyDetailEndPoint()).thenReturn("endpoint/{courseId}/{hierarchyType}");
+        when(outboundRequestHandlerService.fetchUsingGetWithHeaders(anyString(), anyMap()))
+                .thenThrow(new RuntimeException("boom"));
+
+        Map<String, Object> result = assessmentService.getAssessmentContent("courseId", "assessmentContentId");
+        assertEquals(Constants.FAILED, result.get(Constants.STATUS));
+        assertFalse(result.containsKey(Constants.QUESTION_SET));
     }
 
     @Test

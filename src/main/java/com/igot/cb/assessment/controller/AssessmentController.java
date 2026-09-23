@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.io.IOException;
+import java.text.ParseException;
 import java.util.Map;
 
 @RestController
@@ -31,7 +33,7 @@ public class AssessmentController {
 
     @PostMapping("/v2/user/{userId}/assessment/submit")
     public ResponseEntity<Map<String, Object>> submitAssessment(@Valid @RequestBody AssessmentSubmissionDTO requestBody,
-                                                                @PathVariable("userId") String userId, @RequestHeader("rootOrg") String rootOrg) throws Exception {
+                                                                @PathVariable("userId") String userId, @RequestHeader("rootOrg") String rootOrg) throws IOException, ParseException {
 
         return new ResponseEntity<>(assessmentService.submitAssessment(rootOrg, requestBody, userId),
                 HttpStatus.CREATED);
@@ -39,7 +41,7 @@ public class AssessmentController {
 
     @GetMapping("/v2/content/{courseId}/user/{userId}/assessment")
     public ResponseEntity<Map<String, Object>> getAssessmentByContentUser(@PathVariable String courseId,
-                                                                          @PathVariable("userId") String userId, @RequestHeader("rootOrg") String rootOrg) throws Exception {
+                                                                          @PathVariable("userId") String userId, @RequestHeader("rootOrg") String rootOrg) {
         return new ResponseEntity<>(assessmentService.getAssessmentByContentUser(rootOrg, courseId, userId),
                 HttpStatus.OK);
     }
@@ -52,12 +54,13 @@ public class AssessmentController {
      * @param requestBody
      * @param userId
      * @return
-     * @throws Exception
+     * @throws IOException    if the submission cannot be read or written
+     * @throws ParseException if a submitted timestamp is malformed
      */
     @PostMapping("/v2/user/assessment/submit")
     public ResponseEntity<Map<String, Object>> submitUserAssessment(
             @Valid @RequestBody AssessmentSubmissionDTO requestBody, @RequestHeader("userId") String userId,
-            @RequestHeader("rootOrg") String rootOrg) throws Exception {
+            @RequestHeader("rootOrg") String rootOrg) throws IOException, ParseException {
 
         return new ResponseEntity<>(assessmentService.submitAssessment(rootOrg, requestBody, userId),
                 HttpStatus.CREATED);
@@ -72,11 +75,10 @@ public class AssessmentController {
      * @param userId
      * @param rootOrg
      * @return
-     * @throws Exception
      */
     @GetMapping("/v2/content/user/assessment")
     public ResponseEntity<Map<String, Object>> getUserAssessmentByContent(@RequestHeader("courseId") String courseId,
-                                                                          @RequestHeader("userId") String userId, @RequestHeader("rootOrg") String rootOrg) throws Exception {
+                                                                          @RequestHeader("userId") String userId, @RequestHeader("rootOrg") String rootOrg) {
         return new ResponseEntity<>(assessmentService.getAssessmentByContentUser(rootOrg, courseId, userId),
                 HttpStatus.OK);
     }
@@ -101,7 +103,7 @@ public class AssessmentController {
     // QUML based Assessment APIs
     @PostMapping("/v3/user/assessment/submit")
     public ResponseEntity<SBApiResponse>submitUserAssessmentV3(@Valid @RequestBody Map<String, Object> requestBody,
-                                                    @RequestHeader("x-authenticated-user-token") String authUserToken , @RequestParam(name = "editMode" ,required = false) String editMode) throws Exception {
+                                                    @RequestHeader("x-authenticated-user-token") String authUserToken , @RequestParam(name = "editMode" ,required = false) String editMode) throws IOException {
 
         boolean edit = !StringUtils.isEmpty(editMode) && Boolean.parseBoolean(editMode);
         SBApiResponse submitResponse = assessmentServiceV2.submitAssessment(requestBody, authUserToken,edit);
@@ -113,20 +115,19 @@ public class AssessmentController {
      * @param assessmentIdentifier
      * @param rootOrg
      * @return
-     * @throws Exception
      */
 
     @GetMapping("/v1/quml/assessment/read/{assessmentIdentifier}")
     public ResponseEntity<SBApiResponse> readAssessment(
             @PathVariable("assessmentIdentifier") String assessmentIdentifier,
-            @RequestHeader(Constants.X_AUTH_TOKEN) String token) throws Exception {
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         SBApiResponse readResponse = assessmentServiceV2.readAssessment(assessmentIdentifier, token);
         return new ResponseEntity<>(readResponse, readResponse.getResponseCode());
     }
 
     @PostMapping("/v1/quml/question/list")
     public ResponseEntity<SBApiResponse>readQuestionList(@Valid @RequestBody Map<String, Object> requestBody,
-                                              @RequestHeader("x-authenticated-user-token") String authUserToken) throws Exception {
+                                              @RequestHeader("x-authenticated-user-token") String authUserToken) {
         SBApiResponse response = assessmentServiceV2.readQuestionList(requestBody, authUserToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
@@ -134,7 +135,7 @@ public class AssessmentController {
     @GetMapping("/v1/quml/assessment/retake/{assessmentIdentifier}")
     public ResponseEntity<SBApiResponse> retakeAssessment(
             @PathVariable("assessmentIdentifier") String assessmentIdentifier,
-            @RequestHeader(Constants.X_AUTH_TOKEN) String token) throws Exception {
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         SBApiResponse readResponse = assessmentServiceV2.retakeAssessment(assessmentIdentifier, token);
         return new ResponseEntity<>(readResponse, readResponse.getResponseCode());
     }

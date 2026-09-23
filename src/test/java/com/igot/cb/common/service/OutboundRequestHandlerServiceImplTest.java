@@ -4,7 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.Logger;
 import org.springframework.http.*;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
@@ -339,5 +341,146 @@ class OutboundRequestHandlerServiceImplTest {
                 .thenReturn(responseEntity);
         Map<String, Object> result = service.fetchResultUsingGet(uri, headers);
         assertEquals("unexpected", result.get("got"));
+    }
+
+    // ---- debug logging paths (logger replaced by a mock with debug enabled) ----
+
+    /** Bean whose serialisation always fails, to drive the JsonProcessingException branches. */
+    static class UnserializableBean {
+        public String getValue() {
+            throw new IllegalStateException("cannot serialise");
+        }
+    }
+
+    private Logger enableDebugLogging() {
+        Logger debugLogger = mock(Logger.class);
+        when(debugLogger.isDebugEnabled()).thenReturn(true);
+        ReflectionTestUtils.setField(service, "log", debugLogger);
+        return debugLogger;
+    }
+
+    @Test
+    void testFetchResult_DebugEnabled() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("key", "value");
+        when(restTemplate.getForObject(uri, Map.class)).thenReturn(expected);
+
+        assertEquals(expected, service.fetchResult(uri));
+        verify(debugLogger).debug(contains(uri));
+    }
+
+    @Test
+    void testFetchUsingGetWithHeaders_DebugEnabled() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("foo", "bar");
+        when(restTemplate.exchange(eq(uri), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(new ResponseEntity<>(expected, HttpStatus.OK));
+
+        assertEquals(expected, service.fetchUsingGetWithHeaders(uri, headers));
+        verify(debugLogger).debug(contains(uri));
+    }
+
+    @Test
+    void testFetchResultUsingPatch_DebugEnabled_LogsRequestAndResponse() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("patched", true);
+        when(restTemplate.patchForObject(eq(uri), any(HttpEntity.class), eq(Map.class))).thenReturn(expected);
+
+        Map<String, Object> result = service.fetchResultUsingPatch(uri, Map.of("a", 1), headers);
+
+        assertEquals(expected, result);
+        verify(debugLogger).debug(contains("\"a\":1"));
+        verify(debugLogger).debug(contains("\"patched\":true"));
+    }
+
+    @Test
+    void testFetchResultUsingPatch_DebugEnabled_UnserializableRequestIsSkipped() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("patched", true);
+        when(restTemplate.patchForObject(eq(uri), any(HttpEntity.class), eq(Map.class))).thenReturn(expected);
+
+        Map<String, Object> result = service.fetchResultUsingPatch(uri, new UnserializableBean(), headers);
+
+        assertEquals(expected, result);
+        // only the response could be logged, the request serialisation failure is swallowed
+        verify(debugLogger, times(1)).debug(anyString());
+    }
+
+    @Test
+    void testFetchResultUsingPatch_DebugDisabledInsideLogDetails() {
+        Logger debugLogger = mock(Logger.class);
+        // enabled for the caller check, disabled for the re-check inside logDetails
+        when(debugLogger.isDebugEnabled()).thenReturn(true, false, false);
+        ReflectionTestUtils.setField(service, "log", debugLogger);
+        Map<String, Object> expected = Map.of("patched", true);
+        when(restTemplate.patchForObject(eq(uri), any(HttpEntity.class), eq(Map.class))).thenReturn(expected);
+
+        assertEquals(expected, service.fetchResultUsingPatch(uri, Map.of("a", 1), headers));
+        verify(debugLogger, never()).debug(anyString());
+    }
+
+    @Test
+    void testFetchResultUsingPost_DebugEnabled() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("created", true);
+        when(restTemplate.postForObject(eq(uri), any(HttpEntity.class), eq(Map.class))).thenReturn(expected);
+
+        Map<String, Object> result = service.fetchResultUsingPost(uri, Map.of("b", 2), headers);
+
+        assertEquals(expected, result);
+        verify(debugLogger).debug(contains("\"b\":2"));
+        verify(debugLogger).debug(contains("\"created\":true"));
+    }
+
+    @Test
+    void testFetchResultUsingPost_DebugEnabled_UnserializableRequest() {
+        enableDebugLogging();
+
+        Map<String, Object> result = service.fetchResultUsingPost(uri, new UnserializableBean(), headers);
+
+        assertNull(result);
+        verify(restTemplate, never()).postForObject(anyString(), any(), eq(Map.class));
+    }
+
+    @Test
+    void testFetchResultUsingPost_DebugEnabled_UnserializableResponse() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> badResponse = new HashMap<>();
+        badResponse.put("bad", new UnserializableBean());
+        when(restTemplate.postForObject(eq(uri), any(HttpEntity.class), eq(Map.class))).thenReturn(badResponse);
+
+        Map<String, Object> result = service.fetchResultUsingPost(uri, Map.of("b", 2), headers);
+
+        // the response is still returned even though it could not be logged
+        assertSame(badResponse, result);
+        verify(debugLogger, never()).warn(anyString(), any(Object.class));
+    }
+
+    @Test
+    void testFetchResultUsingGet_DebugEnabled() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> expected = Map.of("got", "it");
+        when(restTemplate.exchange(eq(uri), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(new ResponseEntity<>(expected, HttpStatus.OK));
+
+        Map<String, Object> result = service.fetchResultUsingGet(uri, headers);
+
+        assertEquals(expected, result);
+        verify(debugLogger).debug(contains(uri));
+        verify(debugLogger).debug(contains("\"got\":\"it\""));
+    }
+
+    @Test
+    void testFetchResultUsingGet_DebugEnabled_UnserializableResponse() {
+        Logger debugLogger = enableDebugLogging();
+        Map<String, Object> badResponse = new HashMap<>();
+        badResponse.put("bad", new UnserializableBean());
+        when(restTemplate.exchange(eq(uri), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(new ResponseEntity<>(badResponse, HttpStatus.OK));
+
+        Map<String, Object> result = service.fetchResultUsingGet(uri, headers);
+
+        assertSame(badResponse, result);
+        verify(debugLogger, never()).warn(anyString(), any(Object.class));
     }
 }

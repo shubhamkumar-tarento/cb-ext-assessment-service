@@ -295,5 +295,119 @@ class AssessmentUtilServiceImplTest {
         assertThrows(ApplicationLogicError.class, () -> utilService.validateAssessment(questions, answers));
     }
 
+    private Map<String, Object> option(String id, boolean correct, String text, String match, Object response) {
+        Map<String, Object> option = new HashMap<>();
+        option.put("optionId", id);
+        option.put("isCorrect", correct);
+        option.put("userSelected", response != null && Boolean.TRUE.equals(response));
+        if (text != null) {
+            option.put("text", text);
+        }
+        if (match != null) {
+            option.put("match", match);
+        }
+        if (response instanceof String) {
+            option.put("response", response);
+        }
+        return option;
+    }
+
+    private Map<String, Object> question(String id, String type, List<Map<String, Object>> options) {
+        Map<String, Object> question = new HashMap<>();
+        question.put("questionId", id);
+        if (type != null) {
+            question.put("questionType", type);
+        }
+        question.put("options", options);
+        return question;
+    }
+
+    @Test
+    void testValidateAssessment_UnknownQuestionType_IsBlank() {
+        List<Map<String, Object>> questions = List.of(
+                question("q1", "unknown", List.of(option("o1", true, null, null, true))));
+
+        Map<String, Object> result = utilService.validateAssessment(questions);
+        assertEquals(0, result.get("correct"));
+        assertEquals(0, result.get("incorrect"));
+        assertEquals(1, result.get("blank"));
+    }
+
+    @Test
+    void testValidateAssessment_MultipleOptions_SortedComparison() {
+        // mcq-mca with two correct options selected (in reverse order of correct key)
+        Map<String, Object> mca = question("q1", "mcq-mca", List.of(
+                option("o2", true, null, null, true),
+                option("o1", true, null, null, true),
+                option("o3", false, null, null, false)));
+        // fitb with two blanks, one filled in with empty response, one wrong option not correct
+        Map<String, Object> fitb = question("q2", "fitb", List.of(
+                option("b1", true, "Delhi", null, "delhi"),
+                option("b2", true, "India", null, "INDIA"),
+                option("b3", false, "x", null, "")));
+        // mtf with two pairs, one option not correct
+        Map<String, Object> mtf = question("q3", "mtf", List.of(
+                option("m1", true, "A", "One", "one"),
+                option("m2", true, "B", "Two", "two"),
+                option("m3", false, "C", "Three", null)));
+
+        Map<String, Object> result = utilService.validateAssessment(List.of(mca, fitb, mtf));
+        assertEquals(3, result.get("correct"));
+        assertEquals(0, result.get("incorrect"));
+        assertEquals(0, result.get("blank"));
+        assertEquals(100.0, (Double) result.get("result"), 0.01);
+    }
+
+    @Test
+    void testValidateAssessment_WithAnswers_AllTypes() {
+        Map<String, Object> noType = question("q1", null, List.of(
+                option("o1", true, null, null, true), option("o2", false, null, null, false)));
+        Map<String, Object> mtf = question("q2", "MTF", List.of(
+                option("m1", true, "A", "One", "one"), option("m2", true, "B", "Two", "two")));
+        Map<String, Object> fitb = question("q3", "FITB", List.of(
+                option("b1", true, "Delhi", null, "mumbai")));
+        Map<String, Object> mca = question("q4", "MCQ-MCA", List.of(
+                option("o1", true, null, null, true), option("o2", true, null, null, true)));
+        Map<String, Object> sca = question("q5", "MCQ-SCA", List.of(
+                option("o1", true, null, null, true)));
+        Map<String, Object> unknown = question("q6", "survey", List.of(
+                option("o1", true, null, null, true)));
+
+        Map<String, Object> answers = new HashMap<>();
+        answers.put("q1", new ArrayList<>(List.of("o1")));
+        answers.put("q2", new ArrayList<>(List.of("m2-b-two", "m1-a-one")));
+        answers.put("q3", new ArrayList<>(List.of("b1-delhi")));
+        answers.put("q4", new ArrayList<>(List.of("o2", "o1")));
+        answers.put("q5", new ArrayList<>(List.of("o2")));
+        answers.put("q6", new ArrayList<>(List.of("o1")));
+
+        Map<String, Object> result = utilService.validateAssessment(
+                List.of(noType, mtf, fitb, mca, sca, unknown), answers);
+        assertEquals(3, result.get("correct"));
+        assertEquals(2, result.get("incorrect"));
+        assertEquals(1, result.get("blank"));
+        assertEquals(50.0, (Double) result.get("result"), 0.01);
+    }
+
+    @Test
+    void testRemoveAssessmentAnsKey_UnsupportedTypeAndNullOptions() {
+        Questions unsupported = new Questions();
+        unsupported.setQuestionType("survey");
+        Map<String, Object> opt = new HashMap<>();
+        opt.put("optionId", "opt1");
+        opt.put("isCorrect", true);
+        unsupported.setOptions(new ArrayList<>(List.of(opt)));
+
+        Questions noOptions = new Questions();
+        noOptions.setQuestionType("mtf");
+        noOptions.setOptions(null);
+
+        QuestionSet qs = new QuestionSet();
+        qs.setQuestions(new ArrayList<>(List.of(unsupported, noOptions)));
+
+        QuestionSet result = utilService.removeAssessmentAnsKey(qs);
+        assertTrue(result.getQuestions().get(0).getOptions().get(0).containsKey("isCorrect"));
+        assertTrue(ObjectUtils.isEmpty(result.getQuestions().get(1).getOptions()));
+    }
 
 }

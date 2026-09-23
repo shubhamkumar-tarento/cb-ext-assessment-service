@@ -61,7 +61,7 @@ class RedisConfigTest {
         assertFalse(config.getTestOnReturn());
         assertTrue(config.getTestWhileIdle());
         assertEquals(Duration.ofMillis(60000L), config.getMinEvictableIdleDuration());
-        assertEquals(Duration.ofMillis(30000L), config.getTimeBetweenEvictionRuns());
+        assertEquals(Duration.ofMillis(30000L), config.getDurationBetweenEvictionRuns());
         assertEquals(3, config.getNumTestsPerEvictionRun());
         assertTrue(config.getBlockWhenExhausted());
     }

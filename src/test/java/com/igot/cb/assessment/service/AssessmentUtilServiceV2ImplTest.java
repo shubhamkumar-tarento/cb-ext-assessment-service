@@ -106,7 +106,7 @@ class AssessmentUtilServiceV2ImplTest {
     // --- fetchQuestionIdentifierValue ---
 
     @Test
-    void testFetchQuestionIdentifierValue_Positive() throws Exception {
+    void testFetchQuestionIdentifierValue_Positive() {
         when(serverProperties.getAssessmentQuestionParams()).thenReturn(List.of(Constants.IDENTIFIER));
         when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), anyMap()))
                 .thenReturn(Map.of(
@@ -125,7 +125,7 @@ class AssessmentUtilServiceV2ImplTest {
     }
 
     @Test
-    void testFetchQuestionIdentifierValue_EmptyIds() throws Exception {
+    void testFetchQuestionIdentifierValue_EmptyIds() {
         List<Object> qList = new ArrayList<>();
         String result = utilService.fetchQuestionIdentifierValue(Collections.emptyList(), qList, "cat");
         assertEquals("", result);
@@ -1021,7 +1021,7 @@ class AssessmentUtilServiceV2ImplTest {
     }
 
     @Test
-    void testFetchQuestionIdentifierValue_InvalidResponse() throws Exception {
+    void testFetchQuestionIdentifierValue_InvalidResponse() {
         List<String> identifiers = List.of("q1");
         List<Object> questionList = new ArrayList<>();
         String primaryCategory = "category";
@@ -2086,7 +2086,7 @@ class AssessmentUtilServiceV2ImplTest {
         assertEquals(List.of("A"), result.get(qid));
     }
     @Test
-    void testFetchQuestionIdentifierValue_EmptyInputList() throws Exception {
+    void testFetchQuestionIdentifierValue_EmptyInputList() {
         List<String> identifiers = Collections.emptyList();
         List<Object> questionList = new ArrayList<>();
 

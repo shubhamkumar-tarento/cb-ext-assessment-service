@@ -148,45 +148,48 @@ public class ContentServiceImpl implements ContentService{
     }
 
     public Map<String, Object> readContentFromCache(String contentId, List<String> fields) {
-        if (CollectionUtils.isEmpty(fields)) {
-            fields = serverConfig.getDefaultContentProperties();
+        List<String> requestedFields = CollectionUtils.isEmpty(fields)
+                ? serverConfig.getDefaultContentProperties()
+                : fields;
+
+        Map<String, Object> responseData = dataCacheMgr.getContentFromCache(contentId);
+        if (MapUtils.isNotEmpty(responseData) && responseData.size() >= requestedFields.size()) {
+            // The cached entry may carry more fields than requested. That is fine for now.
+            return responseData;
         }
-        Map<String, Object> responseData = null;
 
-        responseData = dataCacheMgr.getContentFromCache(contentId);
+        // DataCacheMgr doesn't have data OR contains less content fields. Let's read again.
+        String contentString = redisCacheMgr.getContentFromCache(contentId);
+        if (StringUtils.isBlank(contentString)) {
+            // Tried reading from Redis - but redis didn't have data for some reason.
+            // Or connection failed ??
+            return readContent(contentId, requestedFields);
+        }
+        return projectCachedContent(contentId, contentString, requestedFields);
+    }
 
-        if (MapUtils.isEmpty(responseData) || responseData.size() < fields.size()) {
-            // DataCacheMgr doesn't have data OR contains less content fields.
-            // Let's read again
-            String contentString = redisCacheMgr.getContentFromCache(contentId);
-            if (StringUtils.isBlank(contentString)) {
-                // Tried reading from Redis - but redis didn't have data for some reason.
-                // Or connection failed ??
-                responseData = readContent(contentId, fields);
-            } else {
-                try {
-                    responseData = new HashMap<>();
-                    Map<String, Object> contentData = mapper.readValue(contentString,
-                            new TypeReference<Map<String, Object>>() {
-                            });
-                    if (MapUtils.isNotEmpty(contentData)) {
-                        for (String field : fields) {
-                            if (contentData.containsKey(field)) {
-                                responseData.put(field, contentData.get(field));
-                            }
-                        }
-                        dataCacheMgr.putContentInCache(contentId, responseData);
+    /**
+     * Projects the Redis-cached content onto {@code fields} and re-populates the local cache.
+     * Falls back to a fresh read when the cached payload cannot be parsed.
+     */
+    private Map<String, Object> projectCachedContent(String contentId, String contentString, List<String> fields) {
+        Map<String, Object> responseData = new HashMap<>();
+        try {
+            Map<String, Object> contentData = mapper.readValue(contentString,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            if (MapUtils.isNotEmpty(contentData)) {
+                for (String field : fields) {
+                    if (contentData.containsKey(field)) {
+                        responseData.put(field, contentData.get(field));
                     }
-                } catch (Exception e) {
-                    logger.error("Failed to parse content info from redis. Exception: " + e.getMessage(), e);
-                    responseData = readContent(contentId);
                 }
+                dataCacheMgr.putContentInCache(contentId, responseData);
             }
-        } else {
-            // We are going to send the data read from which might have more fields.
-            // This is fine for now.
+        } catch (Exception e) {
+            logger.error("Failed to parse content info from redis. Exception: " + e.getMessage(), e);
+            return readContent(contentId);
         }
-
         return responseData;
     }
     public Map<String, Object> readContent(String contentId) throws ApplicationLogicError {

@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PropertiesCache {
 
-    private static volatile PropertiesCache propertiesCache = null;
     public final Map<String, Float> attributePercentageMap = new ConcurrentHashMap<>();
     private final String[] fileName = {
             "cassandra.config.properties",
@@ -38,18 +37,17 @@ public class PropertiesCache {
         }
     }
 
+    /**
+     * Initialization-on-demand holder. The JVM initialises a class lazily, once, and
+     * under its own lock, so this is thread-safe with no synchronisation on the read
+     * path and no volatile field to publish.
+     */
+    private static final class Holder {
+        private static final PropertiesCache INSTANCE = new PropertiesCache();
+    }
+
     public static PropertiesCache getInstance() {
-
-        // change the lazy holder implementation to simple singleton implementation ...
-        if (null == propertiesCache) {
-            synchronized (PropertiesCache.class) {
-                if (null == propertiesCache) {
-                    propertiesCache = new PropertiesCache();
-                }
-            }
-        }
-
-        return propertiesCache;
+        return Holder.INSTANCE;
     }
 
     public void saveConfigProperty(String key, String value) {
