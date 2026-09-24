@@ -137,8 +137,8 @@ public class ContentServiceImpl implements ContentService{
     }
 
     private String handlePatchFailure(Exception e, String userId, Map<String, Object> reqBody, SBApiResponse outgoingResponse) {
-        logger.error(String.format("Failed to update progress for user: %s, for assessment: %s, of course: %s. Exception: %s",
-                userId, reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID), e.getMessage()), e);
+        logger.error("Failed to update progress for user: {}, for assessment: {}, of course: {}. Exception: {}",
+                userId, reqBody.get(Constants.IDENTIFIER), reqBody.get(Constants.COURSE_ID), e.getMessage(), e);
         outgoingResponse.setResult(null);
         updateErrorDetails(outgoingResponse, Constants.FAILED_TO_UPDATE_PROGRESS, HttpStatus.INTERNAL_SERVER_ERROR);
         return "";

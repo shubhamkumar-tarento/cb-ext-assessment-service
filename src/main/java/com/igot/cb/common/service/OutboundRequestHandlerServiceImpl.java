@@ -201,11 +201,13 @@ public class OutboundRequestHandlerServiceImpl {
     }
 
     private void logSerialisationFailure(Exception e, ObjectMapper mapper, Object response) {
-        log.error(String.valueOf(e));
-        try {
-            log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
-        } catch (Exception e1) {
-            // Response could not be serialised for logging; nothing further to report.
+        log.error("Failed to serialise response for logging", e);
+        if (log.isWarnEnabled()) {
+            try {
+                log.warn(ERROR_RESPONSE_LOG, mapper.writeValueAsString(response));
+            } catch (Exception e1) {
+                // Response could not be serialised for logging; nothing further to report.
+            }
         }
     }
 }

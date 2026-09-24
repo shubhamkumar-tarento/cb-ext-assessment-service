@@ -65,6 +65,64 @@ class AssessmentServiceV4ImplTest {
         when(serverProperties.getMandatoryCourseCategoriesForCertificateGeneration())
                 .thenReturn(List.of("Mandatory Course"));
         when(accessTokenValidator.fetchUserIdFromAccessToken(TOKEN)).thenReturn(USER_ID);
+
+        AssessmentUtilServiceV2Impl realUtil = new AssessmentUtilServiceV2Impl(serverProperties, outboundRequestHandlerService, mapper, null, null, contentService, kafkaProducer) {
+            @Override
+            public Map<String, Object> readAssessmentHierarchyFromCache(String assessmentIdentifier, boolean editMode, String token) {
+                return assessUtilServ.readAssessmentHierarchyFromCache(assessmentIdentifier, editMode, token);
+            }
+            @Override
+            public List<Map<String, Object>> readUserSubmittedAssessmentRecords(String userId, String assessmentId) {
+                return assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId);
+            }
+            @Override
+            public boolean hasCoolOffPeriod(Map<String, Object> assessmentAllDetail) {
+                return assessUtilServ.hasCoolOffPeriod(assessmentAllDetail);
+            }
+            @Override
+            public int calculateCyclicalRetakeAttempts(String userId, String assessmentIdentifier,
+                    Map<String, Object> assessmentAllDetail, List<Map<String, Object>> userAssessmentDataList) {
+                return assessUtilServ.calculateCyclicalRetakeAttempts(userId, assessmentIdentifier, assessmentAllDetail, userAssessmentDataList);
+            }
+            @Override
+            public String validateCoolOffPeriod(String userId, String assessmentIdentifier,
+                    Map<String, Object> assessmentAllDetail, List<Map<String, Object>> userAssessmentDataList) {
+                return assessUtilServ.validateCoolOffPeriod(userId, assessmentIdentifier, assessmentAllDetail, userAssessmentDataList);
+            }
+        };
+        lenient().when(assessUtilServ.getShuffleFlagFromHierarchy(any())).thenAnswer(inv -> realUtil.getShuffleFlagFromHierarchy(inv.getArgument(0)));
+        lenient().when(assessUtilServ.getQuestionIdList(any())).thenAnswer(inv -> realUtil.getQuestionIdList(inv.getArgument(0)));
+        lenient().when(assessUtilServ.validateQuestionListRequest(any(), any())).thenAnswer(inv -> realUtil.validateQuestionListRequest(inv.getArgument(0), inv.getArgument(1)));
+        lenient().doAnswer(inv -> { realUtil.applyQuestionIdMatch(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)); return null; }).when(assessUtilServ).applyQuestionIdMatch(any(), any(), any());
+        try {
+            lenient().when(assessUtilServ.validateQuestionListAPI(any(), any(), any(), anyBoolean(), any())).thenAnswer(inv -> realUtil.validateQuestionListAPI(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3), inv.getArgument(4)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        lenient().when(assessUtilServ.isMandatoryPassContextCategory(any())).thenAnswer(inv -> realUtil.isMandatoryPassContextCategory(inv.getArgument(0)));
+        lenient().when(assessUtilServ.proceedWithContentUpdate(any(), any(), anyBoolean())).thenAnswer(inv -> realUtil.proceedWithContentUpdate(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        lenient().when(assessUtilServ.validateAssessmentReadResult(any())).thenAnswer(inv -> realUtil.validateAssessmentReadResult(inv.getArgument(0)));
+        lenient().when(assessUtilServ.resolveCourseCategory(any())).thenAnswer(inv -> realUtil.resolveCourseCategory(inv.getArgument(0)));
+        lenient().when(assessUtilServ.calculateAssessmentSubmitTime(anyInt(), any(), anyInt())).thenAnswer(inv -> realUtil.calculateAssessmentSubmitTime(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        try {
+            lenient().when(assessUtilServ.buildSubmitEvent(any(), any(), any())).thenAnswer(inv -> realUtil.buildSubmitEvent(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        lenient().doAnswer(inv -> { realUtil.updateContentProgressForContext(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)); return null; }).when(assessUtilServ).updateContentProgressForContext(any(), any(), any(), any());
+        lenient().when(assessUtilServ.calculateRetakeAttemptsConsumed(any(), any(), any(), anyInt(), any(), any(), any()))
+                .thenAnswer(inv -> realUtil.calculateRetakeAttemptsConsumed(inv.getArgument(0), inv.getArgument(1),
+                        inv.getArgument(2), inv.getArgument(3), inv.getArgument(4), inv.getArgument(5), inv.getArgument(6)));
+        lenient().when(assessUtilServ.resolveAssessmentStartTimeAsInstant(any()))
+                .thenAnswer(inv -> realUtil.resolveAssessmentStartTimeAsInstant(inv.getArgument(0)));
+        lenient().when(assessUtilServ.readAssessmentResult(any(), any(), any()))
+                .thenAnswer(inv -> realUtil.readAssessmentResult(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        try {
+            lenient().when(assessUtilServ.validateIfQuestionIdsAreSame(any(), any(), any()))
+                    .thenAnswer(inv -> realUtil.validateIfQuestionIdsAreSame(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
@@ -495,13 +553,7 @@ class AssessmentServiceV4ImplTest {
         when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(existingDataList);
         when(mapper.readValue(anyString(), any(TypeReference.class))).thenReturn(userAssessmentDetail);
 
-        // Call private method via reflection
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod(
-                "validateQuestionListAPI", Map.class, String.class, List.class, boolean.class);
-        method.setAccessible(true);
-
-        @SuppressWarnings("unchecked")
-        Map<String, String> result = (Map<String, String>) method.invoke(spyService, requestBody, token, identifierList, false);
+        Map<String, String> result = assessUtilServ.validateQuestionListAPI(requestBody, token, identifierList, false, accessTokenValidator);
 
         assertEquals(Constants.IDENTIFIER_LIST_IS_EMPTY, result.get(Constants.ERROR_MESSAGE));
     }
@@ -512,14 +564,9 @@ class AssessmentServiceV4ImplTest {
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("");
 
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod(
-                "validateQuestionListAPI", Map.class, String.class, List.class, boolean.class);
-        method.setAccessible(true);
-
         Map<String, Object> requestBody = new HashMap<>();
         List<String> identifierList = new ArrayList<>();
-        @SuppressWarnings("unchecked")
-        Map<String, String> result = (Map<String, String>) method.invoke(service, requestBody, "token", identifierList, false);
+        Map<String, String> result = assessUtilServ.validateQuestionListAPI(requestBody, "token", identifierList, false, accessTokenValidator);
 
         assertEquals(Constants.USER_ID_DOESNT_EXIST, result.get(Constants.ERROR_MESSAGE));
     }
@@ -530,14 +577,9 @@ class AssessmentServiceV4ImplTest {
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString())).thenReturn("user1");
 
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod(
-                "validateQuestionListAPI", Map.class, String.class, List.class, boolean.class);
-        method.setAccessible(true);
-
         Map<String, Object> requestBody = new HashMap<>();
         List<String> identifierList = new ArrayList<>();
-        @SuppressWarnings("unchecked")
-        Map<String, String> result = (Map<String, String>) method.invoke(service, requestBody, "token", identifierList, false);
+        Map<String, String> result = assessUtilServ.validateQuestionListAPI(requestBody, "token", identifierList, false, accessTokenValidator);
 
         assertEquals(Constants.ASSESSMENT_ID_KEY_IS_NOT_PRESENT_IS_EMPTY, result.get(Constants.ERROR_MESSAGE));
     }
@@ -854,152 +896,6 @@ class AssessmentServiceV4ImplTest {
         assertEquals("q1", ((Map<?, ?>) questions.get(0)).get("id"));
     }
 
-    @Test
-    void testCalculateRetakeAttemptsConsumed_CyclicalMode_WithinCycleLimit() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        List<Map<String, Object>> userAttempts = createMockAttempts(3);
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(userAttempts);
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(true);
-        when(assessUtilServ.calculateCyclicalRetakeAttempts(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn(3);
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(3, result.intValue());
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-    }
-
-    @Test
-    void testCalculateRetakeAttemptsConsumed_CyclicalMode_CycleExhaustedCooloffActive() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        List<Map<String, Object>> userAttempts = createMockAttempts(6);
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(userAttempts);
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(true);
-        when(assessUtilServ.calculateCyclicalRetakeAttempts(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn(6);
-        when(assessUtilServ.validateCoolOffPeriod(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn("Please wait 1 days");
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(6, result.intValue());
-        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
-        assertNotNull(response.getParams().getErrmsg());
-    }
-
-    @Test
-    void testCalculateRetakeAttemptsConsumed_CyclicalMode_CooloffExpired_NewCycle() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        List<Map<String, Object>> userAttempts = createMockAttempts(6);
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(userAttempts);
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(true);
-        when(assessUtilServ.calculateCyclicalRetakeAttempts(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn(6);
-        when(assessUtilServ.validateCoolOffPeriod(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn(Constants.EMPTY); // Cooloff expired
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(0, result.intValue()); // New cycle starts
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-    }
-
-    @Test
-    void testCalculateRetakeAttemptsConsumed_NonCyclicalMode_TotalAttempts() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        List<Map<String, Object>> userAttempts = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            Map<String, Object> attempt = new HashMap<>();
-            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
-            userAttempts.add(attempt);
-        }
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(userAttempts);
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(false);
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(4, result.intValue());
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-    }
-
-    @Test
-    void testCalculateRetakeAttemptsConsumed_NonCyclicalMode_NoAttempts() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId))
-                .thenReturn(new ArrayList<>());
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(false);
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(0, result.intValue());
-    }
-
-    @Test
-    void testCalculateRetakeAttemptsConsumed_CyclicalMode_FreshCycleAfterGap() {
-        String userId = "user1";
-        String assessmentId = "assess1";
-        int retakeAttemptsAllowed = 6;
-        Map<String, Object> assessmentDetail = new HashMap<>();
-        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
-        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
-        SBApiResponse response = new SBApiResponse();
-        response.setResponseCode(HttpStatus.OK);
-        List<Map<String, Object>> userAttempts = createMockAttempts(7); // 1 new + 6 old
-        when(assessUtilServ.readUserSubmittedAssessmentRecords(userId, assessmentId)).thenReturn(userAttempts);
-        when(assessUtilServ.hasCoolOffPeriod(assessmentDetail)).thenReturn(true);
-        when(assessUtilServ.calculateCyclicalRetakeAttempts(userId, assessmentId, assessmentDetail, userAttempts))
-                .thenReturn(1); // Cycle boundary detected, only counting new attempt
-        Integer result = ReflectionTestUtils.invokeMethod(service, "calculateRetakeAttemptsConsumed",
-                userId, assessmentId, assessmentDetail, retakeAttemptsAllowed, response);
-        assertNotNull(result);
-        assertEquals(1, result.intValue());
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-    }
-
-    private List<Map<String, Object>> createMockAttempts(int count) {
-        List<Map<String, Object>> attempts = new ArrayList<>();
-        Instant now = Instant.now();
-        for (int i = 0; i < count; i++) {
-            Map<String, Object> attempt = new HashMap<>();
-            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
-            attempt.put(Constants.END_TIME, now.minusSeconds(i * 3600L));
-            attempts.add(attempt);
-        }
-        return attempts;
-    }
 
     @Test
     void testGetShuffleFlagFromHierarchy_ShuffleTrueForMatchingSection() throws Exception {
@@ -1008,9 +904,7 @@ class AssessmentServiceV4ImplTest {
         hierarchy.put(Constants.CHILDREN, List.of(
                 Map.of(Constants.IDENTIFIER, "q1"), Map.of(Constants.IDENTIFIER, "q2")
         ));
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
+        boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertTrue(result);
     }
 
@@ -1021,9 +915,7 @@ class AssessmentServiceV4ImplTest {
         hierarchy.put(Constants.CHILDREN, List.of(
                 Map.of(Constants.IDENTIFIER, "q1"), Map.of(Constants.IDENTIFIER, "q2")
         ));
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
+        boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertFalse(result);
     }
 
@@ -1031,9 +923,7 @@ class AssessmentServiceV4ImplTest {
     void testGetShuffleFlagFromHierarchy_EmptySections_ReturnsTrue() throws Exception {
         Map<String, Object> hierarchy = new HashMap<>();
         hierarchy.put(Constants.CHILDREN, Collections.emptyList());
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
+        boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertTrue(result);
     }
 
@@ -1043,9 +933,7 @@ class AssessmentServiceV4ImplTest {
         hierarchy.put(Constants.CHILDREN, List.of(
                 Map.of(Constants.IDENTIFIER, "q1")
         ));
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
+        boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertTrue(result);
     }
 
@@ -1539,7 +1427,7 @@ class AssessmentServiceV4ImplTest {
         requests.add(Map.of(Constants.REQUEST, Map.of(Constants.SEARCH, Map.of(Constants.IDENTIFIER, List.of()))));
         requests.add(Map.of(Constants.REQUEST, "not-a-map"));
         for (Map<String, Object> req : requests) {
-            List<String> ids = ReflectionTestUtils.invokeMethod(service, "getQuestionIdList", req);
+            List<String> ids = assessUtilServ.getQuestionIdList(req);
             assertNotNull(ids);
             assertTrue(ids.isEmpty(), "Expected empty ids for " + req);
         }
@@ -2187,13 +2075,13 @@ class AssessmentServiceV4ImplTest {
     @Test
     void calculateAssessmentSubmitTimeWithBufferAddsSubmissionDuration() {
         Instant start = Instant.parse("2024-01-01T00:00:00Z");
-        Instant end = ReflectionTestUtils.invokeMethod(service, "calculateAssessmentSubmitTime", 60, start, 1);
+        Instant end = assessUtilServ.calculateAssessmentSubmitTime(60, start, 1);
         assertEquals(start.plusSeconds(65), end);
     }
 
     @Test
     void getShuffleFlagFromHierarchyNonBooleanReturnsTrue() {
-        Boolean flag = ReflectionTestUtils.invokeMethod(service, "getShuffleFlagFromHierarchy",
+        boolean flag = assessUtilServ.getShuffleFlagFromHierarchy(
                 Map.of(Constants.SHUFFLE, "false"));
         assertEquals(Boolean.TRUE, flag);
     }
@@ -2201,9 +2089,7 @@ class AssessmentServiceV4ImplTest {
     @Test
     void testGetShuffleFlagFromHierarchy_NullChildren_ReturnsTrue() throws Exception {
         Map<String, Object> hierarchy = new HashMap<>();
-        Method method = AssessmentServiceV4Impl.class.getDeclaredMethod("getShuffleFlagFromHierarchy", Map.class);
-        method.setAccessible(true);
-        boolean result = (boolean) method.invoke(service, hierarchy);
+        boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertTrue(result);
     }
 

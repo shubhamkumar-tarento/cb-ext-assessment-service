@@ -20,6 +20,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.InvocationTargetException;
@@ -3211,6 +3212,219 @@ class AssessmentUtilServiceV2ImplTest {
         attempt.put(Constants.END_TIME, Instant.now().minusSeconds(3 * 86400)); // 3 days ago
         attempts.add(attempt);
         String result = utilService.validateCoolOffPeriod("user1", "assess1", assessmentDetail, attempts);
+        assertEquals(Constants.EMPTY, result);
+    }
+
+    private List<Map<String, Object>> createMockAttempts(int count) {
+        List<Map<String, Object>> attempts = new ArrayList<>();
+        Instant now = Instant.now();
+        for (int i = 0; i < count; i++) {
+            Map<String, Object> attempt = new HashMap<>();
+            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
+            attempt.put(Constants.END_TIME, now.minusSeconds(i * 3600L));
+            attempts.add(attempt);
+        }
+        return attempts;
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_CyclicalMode_WithinCycleLimit() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 6;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        List<Map<String, Object>> userAttempts = createMockAttempts(3);
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, userAttempts, response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.BAD_REQUEST, false));
+        assertEquals(3, result);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_CyclicalMode_CycleExhaustedCooloffActive() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 6;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        List<Map<String, Object>> userAttempts = createMockAttempts(6);
+        when(serverProperties.getAssessmentCoolOffErrorMessage())
+                .thenReturn("Please wait {remainingDays} days. Cooloff period is {coolOffPeriod} days.");
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, userAttempts, response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.BAD_REQUEST, false));
+        assertEquals(6, result);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertNotNull(response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_CyclicalMode_CooloffExpired_NewCycle() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 6;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.COOL_OFF_PERIOD, 1);
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        List<Map<String, Object>> userAttempts = new ArrayList<>();
+        Instant now = Instant.now();
+        for (int i = 0; i < 6; i++) {
+            Map<String, Object> attempt = new HashMap<>();
+            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
+            attempt.put(Constants.END_TIME, now.minusSeconds(3 * 86400L + i * 3600L)); // 3+ days ago
+            userAttempts.add(attempt);
+        }
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, userAttempts, response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.BAD_REQUEST, false));
+        assertEquals(0, result); // New cycle starts
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_NonCyclicalMode_TotalAttempts_NotEnforced() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 6;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        List<Map<String, Object>> userAttempts = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Map<String, Object> attempt = new HashMap<>();
+            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
+            userAttempts.add(attempt);
+        }
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, userAttempts, response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.BAD_REQUEST, false));
+        assertEquals(4, result);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_NonCyclicalMode_NoAttempts() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 6;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, new ArrayList<>(), response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.BAD_REQUEST, false));
+        assertEquals(0, result);
+    }
+
+    @Test
+    void testCalculateRetakeAttemptsConsumed_NonCyclicalMode_EnforceLimit_SetsError() {
+        String userId = "user1";
+        String assessmentId = "assess1";
+        int retakeAttemptsAllowed = 4;
+        Map<String, Object> assessmentDetail = new HashMap<>();
+        assessmentDetail.put(Constants.MAX_ASSESSMENT_RETAKE_ATTEMPTS, retakeAttemptsAllowed);
+        SBApiResponse response = new SBApiResponse();
+        response.setResponseCode(HttpStatus.OK);
+        List<Map<String, Object>> userAttempts = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Map<String, Object> attempt = new HashMap<>();
+            attempt.put(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY, "submitted");
+            userAttempts.add(attempt);
+        }
+        int result = utilService.calculateRetakeAttemptsConsumed(userId, assessmentId, assessmentDetail,
+                retakeAttemptsAllowed, userAttempts, response,
+                new AssessmentUtilServiceV2.RetakeValidationOptions(HttpStatus.INTERNAL_SERVER_ERROR, true));
+        assertEquals(4, result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void testResolveAssessmentStartTimeAsInstant_Date() {
+        Instant now = Instant.now();
+        Instant result = utilService.resolveAssessmentStartTimeAsInstant(Date.from(now));
+        assertEquals(now.getEpochSecond(), result.getEpochSecond());
+    }
+
+    @Test
+    void testResolveAssessmentStartTimeAsInstant_Instant() {
+        Instant now = Instant.now();
+        Instant result = utilService.resolveAssessmentStartTimeAsInstant(now);
+        assertEquals(now, result);
+    }
+
+    @Test
+    void testResolveAssessmentStartTimeAsInstant_String() {
+        Instant now = Instant.now();
+        Instant result = utilService.resolveAssessmentStartTimeAsInstant(now.toString());
+        assertEquals(now, result);
+    }
+
+    @Test
+    void testResolveAssessmentStartTimeAsInstant_UnknownType_ReturnsNull() {
+        assertNull(utilService.resolveAssessmentStartTimeAsInstant(12345));
+    }
+
+    @Test
+    void testCollectHierarchyQuestionIds_FlattensChildNodes() {
+        Map<String, Object> section1 = new HashMap<>();
+        section1.put(Constants.CHILD_NODES, List.of("q1", "q2"));
+        Map<String, Object> section2 = new HashMap<>();
+        section2.put(Constants.CHILD_NODES, List.of("q3"));
+        Map<String, Object> questionSet = new HashMap<>();
+        questionSet.put(Constants.CHILDREN, List.of(section1, section2));
+        List<Object> result = utilService.collectHierarchyQuestionIds(questionSet);
+        assertEquals(List.of("q1", "q2", "q3"), result);
+    }
+
+    @Test
+    void testCollectSubmittedQuestionIds_FlattensSubmittedQuestions() {
+        Map<String, Object> question1 = new HashMap<>();
+        question1.put(Constants.IDENTIFIER, "q1");
+        Map<String, Object> section = new HashMap<>();
+        section.put(Constants.CHILDREN, List.of(question1));
+        List<Object> result = utilService.collectSubmittedQuestionIds(List.of(section), List.of(Constants.IDENTIFIER));
+        assertEquals(List.of("q1"), result);
+    }
+
+    @Test
+    void testValidateIfQuestionIdsAreSame_BlankStoredQuestionSet_ReturnsError() throws Exception {
+        Map<String, Object> existingAssessmentData = new HashMap<>();
+        String result = utilService.validateIfQuestionIdsAreSame(new ArrayList<>(), List.of(Constants.IDENTIFIER),
+                existingAssessmentData);
+        assertEquals(Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED, result);
+    }
+
+    @Test
+    void testValidateIfQuestionIdsAreSame_MatchingQuestionIds_ReturnsEmpty() throws Exception {
+        AssessmentUtilServiceV2Impl realUtil = new AssessmentUtilServiceV2Impl(serverProperties,
+                outboundRequestHandlerService, new ObjectMapper(), cassandraOperation, redisCacheMgr, contentService, kafkaProducer);
+        Map<String, Object> section = new HashMap<>();
+        section.put(Constants.CHILD_NODES, List.of("q1", "q2"));
+        Map<String, Object> questionSetFromAssessment = new HashMap<>();
+        questionSetFromAssessment.put(Constants.CHILDREN, List.of(section));
+        Map<String, Object> existingAssessmentData = new HashMap<>();
+        existingAssessmentData.put(Constants.ASSESSMENT_READ_RESPONSE_KEY,
+                new ObjectMapper().writeValueAsString(questionSetFromAssessment));
+
+        Map<String, Object> submittedQuestion = new HashMap<>();
+        submittedQuestion.put(Constants.IDENTIFIER, "q1");
+        Map<String, Object> submittedSection = new HashMap<>();
+        submittedSection.put(Constants.CHILDREN, List.of(submittedQuestion));
+
+        String result = realUtil.validateIfQuestionIdsAreSame(List.of(submittedSection), List.of(Constants.IDENTIFIER),
+                existingAssessmentData);
         assertEquals(Constants.EMPTY, result);
     }
 

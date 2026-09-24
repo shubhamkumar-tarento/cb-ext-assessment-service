@@ -96,6 +96,21 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
         return Constants.USER_ASSESS_REQ + assessmentIdentifier + "_" + token;
     }
 
+    private Map<String, Object> readJsonToMap(String json) throws IOException {
+        return mapper.readValue(json, new TypeReference<Map<String, Object>>() {
+        });
+    }
+
+    private Map<String, Object> parseJsonToMap(String json) {
+        return new Gson().fromJson(json, new TypeToken<HashMap<String, Object>>() {
+        }.getType());
+    }
+
+    /** The value of {@code key} from every map in {@code maps} that carries it. */
+    private List<Object> extractFieldValues(List<Map<String, Object>> maps, String key) {
+        return maps.stream().filter(map -> map.containsKey(key)).map(map -> map.get(key)).toList();
+    }
+
     /**
      * Puts the question set for this user onto the response, and returns the error message
      * ({@link StringUtils#EMPTY} when there is none).
@@ -179,13 +194,10 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
         Map<String, Object> questionSetFromAssessment;
         String userQuestionSet = redisCacheMgr.getCache(userAssessmentCacheKey(assessmentIdentifier, token));
         if (!ObjectUtils.isEmpty(userQuestionSet)) {
-            questionSetFromAssessment = mapper.readValue(userQuestionSet, new TypeReference<Map<String, Object>>() {
-            });
+            questionSetFromAssessment = readJsonToMap(userQuestionSet);
         } else {
             String questionSetFromAssessmentString = (String) existingData.get(Constants.ASSESSMENT_READ_RESPONSE);
-            questionSetFromAssessment = new Gson().fromJson(questionSetFromAssessmentString,
-                    new TypeToken<HashMap<String, Object>>() {
-                    }.getType());
+            questionSetFromAssessment = parseJsonToMap(questionSetFromAssessmentString);
             questionSetFromAssessment.put(Constants.START_TIME, assessmentStartTime.toEpochMilli());
             questionSetFromAssessment.put(Constants.END_TIME, existingAssessmentEndTime);
             response.getResult().put(Constants.QUESTION_SET, questionSetFromAssessment);
@@ -254,8 +266,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
             if (ObjectUtils.isEmpty(map.get(i))) {
                 newIdentifierList.add(identifierList.get(i));
             } else {
-                Map<String, Object> questionString = mapper.readValue(map.get(i), new TypeReference<Map<String, Object>>() {
-                });
+                Map<String, Object> questionString = readJsonToMap(map.get(i));
                 questionList.add(assessUtilServ.filterQuestionMapDetail(questionString, primaryCategory, true));
             }
         }
@@ -305,8 +316,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
         try {
             String assessmentData = redisCacheMgr.getCache(Constants.ASSESSMENT_ID + assessmentIdentifier);
             if (!ObjectUtils.isEmpty(assessmentData)) {
-                assessmentAllDetail.putAll(mapper.readValue(assessmentData, new TypeReference<Map<String, Object>>() {
-                }));
+                assessmentAllDetail.putAll(readJsonToMap(assessmentData));
             } else {
                 Map<String, Object> readHierarchyApiResponse = assessUtilServ.getReadHierarchyApiResponse(assessmentIdentifier, token);
                 if (!readHierarchyApiResponse.isEmpty()
@@ -371,10 +381,9 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
     private String loadUserAssessmentDetail(Map<String, Object> userAssessmentAllDetail,
             Map<String, Object> assessmentAllDetail, String userId, String assessmentIdFromRequest,
             String authUserToken) throws IOException {
-        String userQuestionSet = redisCacheMgr.getCache(Constants.USER_ASSESS_REQ + assessmentIdFromRequest + "_" + authUserToken);
+        String userQuestionSet = redisCacheMgr.getCache(userAssessmentCacheKey(assessmentIdFromRequest, authUserToken));
         if (!ObjectUtils.isEmpty(userQuestionSet)) {
-            userAssessmentAllDetail.putAll(mapper.readValue(userQuestionSet, new TypeReference<Map<String, Object>>() {
-            }));
+            userAssessmentAllDetail.putAll(readJsonToMap(userQuestionSet));
             return "";
         }
         if (((String) assessmentAllDetail.get(Constants.PRIMARY_CATEGORY)).equalsIgnoreCase(Constants.PRACTICE_QUESTION_SET)) {
@@ -387,8 +396,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
         if (StringUtils.isBlank(questionSetFromAssessmentString)) {
             return Constants.USER_ASSESSMENT_DATA_NOT_PRESENT;
         }
-        userAssessmentAllDetail.putAll(new Gson().fromJson(questionSetFromAssessmentString, new TypeToken<HashMap<String, Object>>() {
-        }.getType()));
+        userAssessmentAllDetail.putAll(parseJsonToMap(questionSetFromAssessmentString));
         return "";
     }
 
@@ -557,8 +565,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
 
     /** The identifiers of the questions carried by a submitted section. */
     private List<String> questionIdsFrom(List<Map<String, Object>> questionsListFromSubmitRequest) {
-        List<String> desiredKeys = List.of(Constants.IDENTIFIER);
-        List<Object> questionsList = questionsListFromSubmitRequest.stream().flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
+        List<Object> questionsList = extractFieldValues(questionsListFromSubmitRequest, Constants.IDENTIFIER);
         return questionsList.stream().map(object -> Objects.toString(object, null))
                 .collect(Collectors.toCollection(ArrayList::new));
     }
@@ -580,10 +587,9 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
                                                               String userId, Map<String, Object> fallback)
             throws IOException {
         String assessmentData = redisCacheMgr.getCache(
-                Constants.USER_ASSESS_REQ + submitRequest.get(Constants.IDENTIFIER) + "_" + authUserToken);
+                userAssessmentCacheKey((String) submitRequest.get(Constants.IDENTIFIER), authUserToken));
         if (!ObjectUtils.isEmpty(assessmentData)) {
-            fallback.putAll(mapper.readValue(assessmentData, new TypeReference<Map<String, Object>>() {
-            }));
+            fallback.putAll(readJsonToMap(assessmentData));
             return fallback;
         }
         List<Map<String, Object>> existingDataList = assessmentRepository.fetchUserAssessmentDataFromDB(userId,
@@ -592,8 +598,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
                 ? (String) existingDataList.get(0).get(Constants.ASSESSMENT_READ_RESPONSE_KEY)
                 : "";
         if (!questionSetFromAssessmentString.isEmpty()) {
-            return new Gson().fromJson(questionSetFromAssessmentString, new TypeToken<HashMap<String, Object>>() {
-            }.getType());
+            return parseJsonToMap(questionSetFromAssessmentString);
         }
         return fallback;
     }
@@ -714,29 +719,27 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
         if (submissionTime.compareTo(later) > 0) {
             return Constants.ASSESSMENT_SUBMIT_EXPIRED;
         }
-        List<String> desiredKeys = List.of(Constants.IDENTIFIER);
-        List<Object> hierarchySectionIds = hierarchySectionList.stream().flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
-        List<Object> submitSectionIds = sectionListFromSubmitRequest.stream().flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
+        List<Object> hierarchySectionIds = extractFieldValues(hierarchySectionList, Constants.IDENTIFIER);
+        List<Object> submitSectionIds = extractFieldValues(sectionListFromSubmitRequest, Constants.IDENTIFIER);
         if (!new HashSet<>(hierarchySectionIds).containsAll(submitSectionIds)) {
             return Constants.WRONG_SECTION_DETAILS;
         }
-        return validateIfQuestionIdsAreSame(submitRequest, sectionListFromSubmitRequest, desiredKeys, userId);
+        return validateIfQuestionIdsAreSame(submitRequest, sectionListFromSubmitRequest, userId);
     }
 
-    private String validateIfQuestionIdsAreSame(Map<String, Object> submitRequest, List<Map<String, Object>> sectionListFromSubmitRequest, List<String> desiredKeys, String userId) {
+    private String validateIfQuestionIdsAreSame(Map<String, Object> submitRequest, List<Map<String, Object>> sectionListFromSubmitRequest, String userId) {
         List<Map<String, Object>> existingDataList = assessmentRepository.fetchUserAssessmentDataFromDB(userId, (String) submitRequest.get(Constants.IDENTIFIER));
         String questionSetFromAssessmentString = (!existingDataList.isEmpty()) ? (String) existingDataList.get(0).get(Constants.ASSESSMENT_READ_RESPONSE_KEY) : "";
         if (StringUtils.isBlank(questionSetFromAssessmentString)) {
             return Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED;
         }
-        Map<String, Object> questionSetFromAssessment = new Gson().fromJson(questionSetFromAssessmentString, new TypeToken<HashMap<String, Object>>() {
-        }.getType());
+        Map<String, Object> questionSetFromAssessment = parseJsonToMap(questionSetFromAssessmentString);
         if (questionSetFromAssessment == null || questionSetFromAssessment.get(Constants.CHILDREN) == null) {
             return "";
         }
         List<Object> questionIdsFromAssessmentHierarchy = collectHierarchyQuestionIds(questionSetFromAssessment);
         List<Object> userQuestionIdsFromSubmitRequest =
-                collectSubmittedQuestionIds(sectionListFromSubmitRequest, desiredKeys);
+                collectSubmittedQuestionIds(sectionListFromSubmitRequest);
         if (!new HashSet<>(questionIdsFromAssessmentHierarchy).containsAll(userQuestionIdsFromSubmitRequest)) {
             return Constants.ASSESSMENT_SUBMIT_INVALID_QUESTION;
         }
@@ -746,8 +749,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
     /** Flattens the child-node ids declared by every section of the stored question set. */
     private List<Object> collectHierarchyQuestionIds(Map<String, Object> questionSetFromAssessment) {
         List<Map<String, Object>> sections = (List<Map<String, Object>>) questionSetFromAssessment.get(Constants.CHILDREN);
-        List<String> desiredKey = List.of(Constants.CHILD_NODES);
-        List<Object> questionList = sections.stream().flatMap(x -> desiredKey.stream().filter(x::containsKey).map(x::get)).toList();
+        List<Object> questionList = extractFieldValues(sections, Constants.CHILD_NODES);
         List<Object> questionIdsFromAssessmentHierarchy = new ArrayList<>();
         for (Object question : questionList) {
             questionIdsFromAssessmentHierarchy.addAll((List<String>) question);
@@ -756,15 +758,14 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
     }
 
     /** Flattens the question ids the user actually submitted, across every section of the request. */
-    private List<Object> collectSubmittedQuestionIds(List<Map<String, Object>> sectionListFromSubmitRequest,
-                                                     List<String> desiredKeys) {
+    private List<Object> collectSubmittedQuestionIds(List<Map<String, Object>> sectionListFromSubmitRequest) {
         List<Map<String, Object>> questionsListFromSubmitRequest = new ArrayList<>();
         for (Map<String, Object> userSectionData : sectionListFromSubmitRequest) {
             if (userSectionData.containsKey(Constants.CHILDREN) && !ObjectUtils.isEmpty(userSectionData.get(Constants.CHILDREN))) {
                 questionsListFromSubmitRequest.addAll((List<Map<String, Object>>) userSectionData.get(Constants.CHILDREN));
             }
         }
-        return questionsListFromSubmitRequest.stream().flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).toList();
+        return extractFieldValues(questionsListFromSubmitRequest, Constants.IDENTIFIER);
     }
 
     private Instant calculateAssessmentSubmitTime(int expectedDurationInSeconds, Instant assessmentStartTime,
@@ -973,8 +974,7 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
     }
 
     private int calculateAssessmentRetakeCount(List<Map<String, Object>> userAssessmentData) {
-        List<String> desiredKeys = List.of(Constants.SUBMIT_ASSESSMENT_RESPONSE);
-        List<Object> values = userAssessmentData.stream().flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get)).collect(Collectors.toCollection(ArrayList::new));
+        List<Object> values = new ArrayList<>(extractFieldValues(userAssessmentData, Constants.SUBMIT_ASSESSMENT_RESPONSE));
         Iterables.removeIf(values, Predicates.isNull());
         return values.size();
     }

@@ -1,5 +1,6 @@
 package com.igot.cb.assessment.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
@@ -7,6 +8,7 @@ import com.igot.cb.cassandra.utils.CassandraOperation;
 import com.igot.cb.common.model.SBApiResponse;
 import com.igot.cb.common.service.ContentService;
 import com.igot.cb.common.service.OutboundRequestHandlerServiceImpl;
+import com.igot.cb.common.util.AccessTokenValidator;
 import com.igot.cb.common.util.CbExtAssessmentServerProperties;
 import com.igot.cb.common.util.Constants;
 import com.igot.cb.core.exception.ApplicationLogicError;
@@ -31,6 +33,7 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.igot.cb.common.util.ProjectUtil.createDefaultResponse;
 import static com.igot.cb.common.util.ProjectUtil.updateErrorDetails;
 
 @Service
@@ -63,6 +66,26 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		this.redisCacheMgr = redisCacheMgr;
 		this.contentService = contentService;
 		this.kafkaProducer = kafkaProducer;
+	}
+
+	private Map<String, Object> readJsonToMap(String json) throws IOException {
+		return mapper.readValue(json, new TypeReference<Map<String, Object>>() {
+		});
+	}
+
+	private Map<String, Object> convertToMap(Object value) {
+		return mapper.convertValue(value, new TypeReference<Map<String, Object>>() {
+		});
+	}
+
+	private List<Map<String, Object>> convertToMapList(Object value) {
+		return mapper.convertValue(value, new TypeReference<List<Map<String, Object>>>() {
+		});
+	}
+
+	/** True when {@code activeObj} represents an active flag, whether stored as a Boolean or a String. */
+	private boolean isActiveFlag(Object activeObj) {
+		return activeObj instanceof Boolean booleanValue ? booleanValue : Boolean.parseBoolean(activeObj.toString());
 	}
 
 	public Map<String, Object> validateQumlAssessment(List<String> originalQuestionList,
@@ -431,8 +454,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			String hierarchyStr = (String) assessmentEntry.get(Constants.HIERARCHY);
 			if (StringUtils.isNotBlank(hierarchyStr)) {
 				try {
-					Map<String,Object> questionHierarchy = mapper.readValue(hierarchyStr, new TypeReference<Map<String, Object>>() {
-					});
+					Map<String,Object> questionHierarchy = readJsonToMap(hierarchyStr);
 					redisCacheMgr.putCache(Constants.ASSESSMENT_ID + assessmentIdentifier + Constants.UNDER_SCORE + Constants.QUESTION_SET, questionHierarchy,serverProperties.getRedisQuestionsReadTimeOut().intValue());
 					return questionHierarchy;
 				} catch (Exception e) {
@@ -443,8 +465,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		}
 		else {
 			try {
-				return mapper.readValue(questStr, new TypeReference<Map<String, Object>>() {
-				});
+				return readJsonToMap(questStr);
 			} catch (IOException e) {
 				throw new ApplicationLogicError("Failed to parse the cached assessment hierarchy", e);
 			}
@@ -498,8 +519,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				redisCacheMgr.putCache(Constants.ASSESSMENT_ID + assessmentIdentifier + Constants.UNDER_SCORE + Constants.QUESTIONS, questionMap,serverProperties.getRedisQuestionsReadTimeOut().intValue());
 			return questionMap;
 		} else {
-			return mapper.readValue(questStr, new TypeReference<Map<String, Object>>() {
-			});
+			return readJsonToMap(questStr);
 		}
 	}
 
@@ -519,8 +539,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		String res = redisCacheMgr.getContentFromCache(serverProperties.getRedisWheeboxKey()+"_"+userId);
 		if(!StringUtils.isEmpty(res)) {
             try {
-               return  mapper.readValue(res, new TypeReference<Map<String, Object>>() {
-                });
+               return  readJsonToMap(res);
             } catch (IOException e) {
                 throw new ApplicationLogicError("Failed to parse the cached Wheebox response", e);
             }
@@ -1051,8 +1070,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	private Map<String, Object> getQumlAnswersV2(List<String> questions, Map<String, Object> questionMap) {
 		Map<String, Object> ret = new HashMap<>();
 		for (String questionId : questions) {
-			Map<String, Object> question = mapper.convertValue(questionMap.get(questionId), new TypeReference<Map<String, Object>>() {
-			});
+			Map<String, Object> question = convertToMap(questionMap.get(questionId));
 			ret.put(question.get(Constants.IDENTIFIER).toString(), collectCorrectOptionsV2(question));
 		}
 
@@ -1066,8 +1084,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	private List<String> collectCorrectOptionsV2(Map<String, Object> question) {
 		List<String> correctOption = new ArrayList<>();
 		if (!question.containsKey(Constants.QUESTION_TYPE)) {
-			List<Map<String, Object>> optionsList = mapper.convertValue(question.get(Constants.OPTIONS), new TypeReference<List<Map<String, Object>>>() {
-			});
+			List<Map<String, Object>> optionsList = convertToMapList(question.get(Constants.OPTIONS));
 			for (Map<String, Object> options : optionsList) {
 				if ((boolean) options.get(Constants.IS_CORRECT)) {
 					correctOption.add(options.get(Constants.OPTION_ID).toString());
@@ -1076,15 +1093,12 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			return correctOption;
 		}
 		String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
-		Map<String, Object> editorStateObj = mapper.convertValue(question.get(Constants.EDITOR_STATE), new TypeReference<Map<String, Object>>() {
-		});
-		List<Map<String, Object>> options = mapper.convertValue(editorStateObj.get(Constants.OPTIONS), new TypeReference<List<Map<String, Object>>>() {
-		});
+		Map<String, Object> editorStateObj = convertToMap(question.get(Constants.EDITOR_STATE));
+		List<Map<String, Object>> options = convertToMapList(editorStateObj.get(Constants.OPTIONS));
 		switch (questionType) {
 			case Constants.MTF:
 				for (Map<String, Object> option : options) {
-					Map<String, Object> valueObj = mapper.convertValue(option.get(Constants.VALUE), new TypeReference<Map<String, Object>>() {
-					});
+					Map<String, Object> valueObj = convertToMap(option.get(Constants.VALUE));
 					correctOption.add(valueObj.get(Constants.VALUE).toString() + "-"
 							+ option.get(Constants.ANSWER).toString().toLowerCase());
 				}
@@ -1095,8 +1109,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			case Constants.MCQ_SCA, Constants.MCQ_MCA, Constants.MCQ_SCA_TF:
 				for (Map<String, Object> option : options) {
 					if ((boolean) option.get(Constants.ANSWER)) {
-						Map<String, Object> valueObj = mapper.convertValue(option.get(Constants.VALUE), new TypeReference<Map<String, Object>>() {
-						});
+						Map<String, Object> valueObj = convertToMap(option.get(Constants.VALUE));
 						correctOption.add(valueObj.get(Constants.VALUE).toString());
 					}
 				}
@@ -1118,11 +1131,8 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 	private void handleqTypeQuestionV2(Map<String, Object> question, List<String> marked, String assessmentType) {
 		if (question.containsKey(Constants.QUESTION_TYPE)) {
 			String questionType = ((String) question.get(Constants.QUESTION_TYPE)).toLowerCase();
-			Map<String, Object> editorStateObj = mapper.convertValue(question.get(Constants.EDITOR_STATE), new TypeReference<Map<String, Object>>() {
-			});
-			List<Map<String, Object>> options = mapper.convertValue(editorStateObj.get(Constants.OPTIONS),
-					new TypeReference<List<Map<String, Object>>>() {
-					});
+			Map<String, Object> editorStateObj = convertToMap(question.get(Constants.EDITOR_STATE));
+			List<Map<String, Object>> options = convertToMapList(editorStateObj.get(Constants.OPTIONS));
 			getMarkedIndexForEachQuestionV2(questionType, options, marked, assessmentType);
 		}
 	}
@@ -1435,10 +1445,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 					return (answer instanceof Boolean boolValue && boolValue) || answer instanceof String;
 				})
 				.forEach(option -> {
-					Map<String, Object> valueObj = mapper.convertValue(
-							option.get(Constants.VALUE),
-							new TypeReference<Map<String, Object>>() {}
-					);
+					Map<String, Object> valueObj = convertToMap(option.get(Constants.VALUE));
 					String answerText = valueObj.get(Constants.BODY).toString().trim();
 					Object answer = option.get(Constants.ANSWER);
 					// Handle new format: answer field contains "B1", "B2", etc. (skip "none")
@@ -1757,9 +1764,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 				Constants.PREFIX_VALIDATE_CONTEXT_LOCKING, userId, assessmentId);
 			return false;
 		}
-		boolean isActive = activeObj instanceof Boolean booleanValue
-			? booleanValue
-			: Boolean.parseBoolean(activeObj.toString());
+		boolean isActive = isActiveFlag(activeObj);
 
 		if (!isActive) {
 			logger.debug("{} Enrolment not active - userId: {}, assessmentId: {}",
@@ -1920,9 +1925,7 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 		String courseId = (String) enrolment.get(Constants.COURSE_ID);
 		Object activeObj = enrolment.get(Constants.ACTIVE);
 		if (activeObj != null) {
-			boolean isActive = activeObj instanceof Boolean booleanValue
-					? booleanValue
-					: Boolean.parseBoolean(activeObj.toString());
+			boolean isActive = isActiveFlag(activeObj);
 			if (!isActive) {
 				return false;
 			}
@@ -2110,5 +2113,405 @@ public class AssessmentUtilServiceV2Impl implements AssessmentUtilServiceV2 {
 			logger.error("Failed to publish failed assessment audit event to Kafka. UserId: {}, AssessmentId: {}, Exception: {}",
 					userId, assessmentId, e.getMessage(), e);
 		}
+	}
+
+	@Override
+	public boolean getShuffleFlagFromHierarchy(Map<String, Object> assessmentAllDetail) {
+		if (MapUtils.isEmpty(assessmentAllDetail)) {
+			return true;
+		}
+		Object shuffleValue = assessmentAllDetail.get(Constants.SHUFFLE);
+		if (shuffleValue instanceof Boolean shuffle) {
+			return shuffle;
+		}
+		return true;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<String> getQuestionIdList(Map<String, Object> questionListRequest) {
+		try {
+			if (questionListRequest.containsKey(Constants.REQUEST)) {
+				Map<String, Object> request = (Map<String, Object>) questionListRequest.get(Constants.REQUEST);
+				if ((!ObjectUtils.isEmpty(request)) && request.containsKey(Constants.SEARCH)) {
+					Map<String, Object> searchObj = (Map<String, Object>) request.get(Constants.SEARCH);
+					if (!ObjectUtils.isEmpty(searchObj) && searchObj.containsKey(Constants.IDENTIFIER)
+							&& !CollectionUtils.isEmpty((List<String>) searchObj.get(Constants.IDENTIFIER))) {
+						return (List<String>) searchObj.get(Constants.IDENTIFIER);
+					}
+				}
+			}
+		} catch (Exception e) {
+			logger.error(String.format("Failed to process the questionList request body. %s", e.getMessage()));
+		}
+		return Collections.emptyList();
+	}
+
+	@Override
+	public boolean validateQuestionListRequest(List<String> identifierList, List<String> questionsFromAssessment) {
+		return new HashSet<>(questionsFromAssessment).containsAll(identifierList);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public void applyQuestionIdMatch(Map<String, String> result, Map<String, Object> userAssessmentAllDetail,
+									 List<String> identifierList) {
+		if (MapUtils.isEmpty(userAssessmentAllDetail)) {
+			result.put(Constants.ERROR_MESSAGE, Constants.ASSESSMENT_ID_INVALID);
+			return;
+		}
+		result.put(Constants.PRIMARY_CATEGORY, (String) userAssessmentAllDetail.get(Constants.PRIMARY_CATEGORY));
+		List<String> questionsFromAssessment = new ArrayList<>();
+		List<Map<String, Object>> sections = (List<Map<String, Object>>) userAssessmentAllDetail
+				.get(Constants.CHILDREN);
+		for (Map<String, Object> section : sections) {
+			// Out of the list of questions received in the payload, checking if the request
+			// has only those ids which are a part of the user's latest assessment
+			// Fetching all the remaining questions details from the Redis
+			questionsFromAssessment.addAll((List<String>) section.get(Constants.CHILD_NODES));
+		}
+		result.put(Constants.ERROR_MESSAGE, validateQuestionListRequest(identifierList, questionsFromAssessment)
+				? StringUtils.EMPTY
+				: Constants.THE_QUESTIONS_IDS_PROVIDED_DONT_MATCH);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public Map<String, String> validateQuestionListAPI(Map<String, Object> requestBody, String authUserToken,
+														List<String> identifierList, boolean editMode,
+														AccessTokenValidator accessTokenValidator) throws IOException {
+		Map<String, String> result = new HashMap<>();
+		String userId = accessTokenValidator.fetchUserIdFromAccessToken(authUserToken);
+		if (StringUtils.isBlank(userId)) {
+			result.put(Constants.ERROR_MESSAGE, Constants.USER_ID_DOESNT_EXIST);
+			return result;
+		}
+		String assessmentIdFromRequest = (String) requestBody.get(Constants.ASSESSMENT_ID_KEY);
+		if (StringUtils.isBlank(assessmentIdFromRequest)) {
+			result.put(Constants.ERROR_MESSAGE, Constants.ASSESSMENT_ID_KEY_IS_NOT_PRESENT_IS_EMPTY);
+			return result;
+		}
+		identifierList.addAll(getQuestionIdList(requestBody));
+		if (identifierList.isEmpty()) {
+			result.put(Constants.ERROR_MESSAGE, Constants.IDENTIFIER_LIST_IS_EMPTY);
+			return result;
+		}
+
+		Map<String, Object> assessmentAllDetail = readAssessmentHierarchyFromCache(assessmentIdFromRequest, editMode,
+				authUserToken);
+
+		if (MapUtils.isEmpty(assessmentAllDetail)) {
+			result.put(Constants.ERROR_MESSAGE, Constants.ASSESSMENT_HIERARCHY_READ_FAILED);
+			return result;
+		}
+		result.put(Constants.SHUFFLE, String.valueOf(getShuffleFlagFromHierarchy(assessmentAllDetail)));
+		String primaryCategory = (String) assessmentAllDetail.get(Constants.PRIMARY_CATEGORY);
+		if (Constants.PRACTICE_QUESTION_SET
+				.equalsIgnoreCase(primaryCategory)||editMode) {
+			result.put(Constants.PRIMARY_CATEGORY, primaryCategory);
+			result.put(Constants.ERROR_MESSAGE, StringUtils.EMPTY);
+			return result;
+		}
+
+		Map<String, Object> userAssessmentAllDetail = new HashMap<>();
+
+		List<Map<String, Object>> existingDataList = readUserSubmittedAssessmentRecords(
+				userId, assessmentIdFromRequest);
+		String questionSetFromAssessmentString = (!existingDataList.isEmpty())
+				? (String) existingDataList.get(0).get(Constants.ASSESSMENT_READ_RESPONSE_KEY)
+				: "";
+		if (StringUtils.isNotBlank(questionSetFromAssessmentString)) {
+			userAssessmentAllDetail.putAll(readJsonToMap(questionSetFromAssessmentString));
+		} else {
+			result.put(Constants.ERROR_MESSAGE, Constants.USER_ASSESSMENT_DATA_NOT_PRESENT);
+			return result;
+		}
+
+		applyQuestionIdMatch(result, userAssessmentAllDetail, identifierList);
+		return result;
+	}
+
+	@Override
+	public boolean isMandatoryPassContextCategory(String contextCategory) {
+		if (StringUtils.isBlank(contextCategory)) {
+			return false;
+		}
+		List<String> mandatoryContextCategories = serverProperties.getMandatoryContextCategoriesForPassRequirement();
+		return mandatoryContextCategories.stream()
+				.anyMatch(category -> category.equalsIgnoreCase(contextCategory));
+	}
+
+	@Override
+	public boolean proceedWithContentUpdate(String contextCategory, String courseCategory, boolean hasPassed) {
+		// Scenario 1: Check if contextCategory exists and requires mandatory passing
+		if (StringUtils.isNotBlank(contextCategory) && isMandatoryPassContextCategory(contextCategory)) {
+			// Must pass for mandatory context categories - return immediately
+			return hasPassed;
+		}
+
+		// Scenario 2: Check if courseCategory requires mandatory passing
+		List<String> mandatoryCourseCategoriesList = serverProperties.getMandatoryCourseCategoriesForCertificateGeneration();
+		boolean isMandatoryCourseCategory = mandatoryCourseCategoriesList.stream()
+				.anyMatch(c -> c.equalsIgnoreCase(courseCategory));
+
+		if (isMandatoryCourseCategory) {
+			// Must pass for mandatory course categories
+			return hasPassed;
+		}
+
+		// For non-mandatory categories: always allow if passed, or allow even if not passed
+		return true;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public String validateAssessmentReadResult(Map<String, Object> request) {
+		String errMsg = "";
+		if (MapUtils.isEmpty(request) || !request.containsKey(Constants.REQUEST)) {
+			return Constants.INVALID_REQUEST;
+		}
+
+		Map<String, Object> requestBody = (Map<String, Object>) request.get(Constants.REQUEST);
+		if (MapUtils.isEmpty(requestBody)) {
+			return Constants.INVALID_REQUEST;
+		}
+		List<String> missingAttribs = new ArrayList<>();
+		if (!requestBody.containsKey(Constants.ASSESSMENT_ID_KEY)
+				|| StringUtils.isBlank((String) requestBody.get(Constants.ASSESSMENT_ID_KEY))) {
+			missingAttribs.add(Constants.ASSESSMENT_ID_KEY);
+		}
+
+		if (!requestBody.containsKey(Constants.COURSE_ID)
+				|| StringUtils.isBlank((String) requestBody.get(Constants.COURSE_ID))) {
+			missingAttribs.add(Constants.COURSE_ID);
+		}
+
+		if (!missingAttribs.isEmpty()) {
+			errMsg = "One or more mandatory fields are missing in Request. Mandatory fields are : "
+					+ missingAttribs.toString();
+		}
+
+		return errMsg;
+	}
+
+	@Override
+	public String resolveCourseCategory(Map<String, Object> submitRequest) {
+		Map<String, Object> courseCategoryMap = contentService
+				.readContent((String) submitRequest.get(Constants.COURSE_ID));
+		if (MapUtils.isNotEmpty(courseCategoryMap)) {
+			return (String) courseCategoryMap.get(Constants.COURSE_CATEGORY);
+		}
+		return "";
+	}
+
+	@Override
+	public Instant calculateAssessmentSubmitTime(int expectedDurationInSeconds, Instant assessmentStartTime,
+												 int bufferTimeInSeconds) {
+		int totalDurationInSeconds = expectedDurationInSeconds;
+
+		if (bufferTimeInSeconds > 0) {
+			totalDurationInSeconds += Integer.parseInt(serverProperties.getUserAssessmentSubmissionDuration());
+		}
+
+		return assessmentStartTime.plusSeconds(totalDurationInSeconds);
+	}
+
+	@Override
+	public Map<String, Object> buildSubmitEvent(Map<String, Object> submitRequest, String primaryCategory,
+												Map<String, Object> result) throws JsonProcessingException {
+		Map<String, Object> kafkaResult = new HashMap<>();
+		kafkaResult.put(Constants.CONTENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
+		kafkaResult.put(Constants.COURSE_ID,
+				submitRequest.get(Constants.COURSE_ID) != null ? submitRequest.get(Constants.COURSE_ID)
+						: "");
+		kafkaResult.put(Constants.BATCH_ID,
+				submitRequest.get(Constants.BATCH_ID) != null ? submitRequest.get(Constants.BATCH_ID) : "");
+		kafkaResult.put(Constants.USER_ID, submitRequest.get(Constants.USER_ID));
+		kafkaResult.put(Constants.ASSESSMENT_ID_KEY, submitRequest.get(Constants.IDENTIFIER));
+		kafkaResult.put(Constants.PRIMARY_CATEGORY, primaryCategory);
+		kafkaResult.put(Constants.TOTAL_SCORE, result.get(Constants.OVERALL_RESULT));
+		if (("Competency Assessment".equalsIgnoreCase(primaryCategory)
+				&& submitRequest.containsKey(Constants.COMPETENCIES_V3)
+				&& submitRequest.get(Constants.COMPETENCIES_V3) != null)) {
+			ObjectMapper objectMapper = new ObjectMapper(); //Updated for Json Import
+			List<Map<String, Object>> competencyList = objectMapper.readValue(
+					(String) submitRequest.get(Constants.COMPETENCIES_V3),
+					new TypeReference<List<Map<String, Object>>>() {
+					}
+			);
+			// First competency map, or an empty marker when none were submitted
+			kafkaResult.put(Constants.COMPETENCY, competencyList.isEmpty() ? "" : competencyList.get(0));
+		}
+		return kafkaResult;
+	}
+
+	@Override
+	public void updateContentProgressForContext(String contextCategory, String userAuthToken,
+												Map<String, Object> submitRequest, String userId) {
+		SBApiResponse contentUpdateResponse = new SBApiResponse();
+		if (StringUtils.isNotBlank(contextCategory)
+				&& contextCategory.equalsIgnoreCase(Constants.PRE_ENROLLED_ASSESSMENT_KEY)) {
+			contentService.updatePreEnrolledAssessment(userAuthToken, submitRequest, userId, contentUpdateResponse);
+		} else {
+			contentService.updateContentProgress(userAuthToken, submitRequest, userId, contentUpdateResponse);
+		}
+	}
+
+	@Override
+	public int calculateRetakeAttemptsConsumed(String userId, String assessmentIdentifier,
+											   Map<String, Object> assessmentAllDetail,
+											   int retakeAttemptsAllowed,
+											   List<Map<String, Object>> existingDataList,
+											   SBApiResponse response,
+											   RetakeValidationOptions options) {
+		// Check if this assessment has cyclical cooloff configured
+		boolean hasCyclicalCooloff = hasCoolOffPeriod(assessmentAllDetail);
+		if (hasCyclicalCooloff) {
+			// For cyclical cooloff: calculate current cycle attempts
+			int currentCycleCount = calculateCyclicalRetakeAttempts(
+					userId, assessmentIdentifier, assessmentAllDetail, existingDataList);
+			// Only check cooloff if user has exhausted current cycle attempts
+			if (currentCycleCount >= retakeAttemptsAllowed) {
+				String coolOffValidationError = validateCoolOffPeriod(userId, assessmentIdentifier,
+						assessmentAllDetail, existingDataList);
+				if (StringUtils.isNotBlank(coolOffValidationError)) {
+					logger.info("Cool-off period active - User: {}, Assessment: {}", userId, assessmentIdentifier);
+					updateErrorDetails(response, coolOffValidationError, options.coolOffErrorStatus());
+					return currentCycleCount;
+				}
+				// Cooloff period has expired - reset counter for new cycle
+				logger.info("Cool-off period completed - User: {} starting new cycle for assessment: {}",
+						userId, assessmentIdentifier);
+				return 0;
+			}
+			logger.info("Cyclical cooloff mode - Current cycle attempts: {}, Allowed: {}",
+					currentCycleCount, retakeAttemptsAllowed);
+			return currentCycleCount;
+		}
+		// For non-cyclical: count all historical attempts (permanent limit)
+		int totalAttemptsMade = (int) existingDataList.stream()
+				.filter(userData -> userData.containsKey(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY)
+						&& null != userData.get(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY))
+				.count();
+		logger.info("Non-cyclical mode - Total attempts made: {}, Allowed: {}",
+				totalAttemptsMade, retakeAttemptsAllowed);
+		if (options.enforceNonCyclicalLimit() && totalAttemptsMade >= retakeAttemptsAllowed) {
+			updateErrorDetails(response, Constants.ASSESSMENT_RETRY_ATTEMPTS_CROSSED, HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+		return totalAttemptsMade;
+	}
+
+	@Override
+	public String validateIfQuestionIdsAreSame(List<Map<String, Object>> sectionListFromSubmitRequest,
+											   List<String> desiredKeys, Map<String, Object> existingAssessmentData)
+			throws IOException {
+		String questionSetFromAssessmentString = (String) existingAssessmentData
+				.get(Constants.ASSESSMENT_READ_RESPONSE_KEY);
+		if (StringUtils.isBlank(questionSetFromAssessmentString)) {
+			return Constants.ASSESSMENT_SUBMIT_QUESTION_READ_FAILED;
+		}
+		Map<String, Object> questionSetFromAssessment = readJsonToMap(questionSetFromAssessmentString);
+		if (questionSetFromAssessment == null || questionSetFromAssessment.get(Constants.CHILDREN) == null) {
+			return "";
+		}
+		List<Object> questionIdsFromAssessmentHierarchy = collectHierarchyQuestionIds(questionSetFromAssessment);
+		List<Object> userQuestionIdsFromSubmitRequest =
+				collectSubmittedQuestionIds(sectionListFromSubmitRequest, desiredKeys);
+		if (!new HashSet<>(questionIdsFromAssessmentHierarchy).containsAll(userQuestionIdsFromSubmitRequest)) {
+			return Constants.ASSESSMENT_SUBMIT_INVALID_QUESTION;
+		}
+		return "";
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object> collectHierarchyQuestionIds(Map<String, Object> questionSetFromAssessment) {
+		List<Map<String, Object>> sections = (List<Map<String, Object>>) questionSetFromAssessment
+				.get(Constants.CHILDREN);
+		List<String> desiredKey = List.of(Constants.CHILD_NODES);
+		List<Object> questionList = sections.stream()
+				.flatMap(x -> desiredKey.stream().filter(x::containsKey).map(x::get)).toList();
+		List<Object> questionIdsFromAssessmentHierarchy = new ArrayList<>();
+		for (Object question : questionList) {
+			questionIdsFromAssessmentHierarchy.addAll((List<String>) question);
+		}
+		return questionIdsFromAssessmentHierarchy;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object> collectSubmittedQuestionIds(List<Map<String, Object>> sectionListFromSubmitRequest,
+													List<String> desiredKeys) {
+		List<Map<String, Object>> questionsListFromSubmitRequest = new ArrayList<>();
+		for (Map<String, Object> userSectionData : sectionListFromSubmitRequest) {
+			if (userSectionData.containsKey(Constants.CHILDREN)
+					&& !ObjectUtils.isEmpty(userSectionData.get(Constants.CHILDREN))) {
+				questionsListFromSubmitRequest
+						.addAll((List<Map<String, Object>>) userSectionData.get(Constants.CHILDREN));
+			}
+		}
+		return questionsListFromSubmitRequest.stream()
+				.flatMap(x -> desiredKeys.stream().filter(x::containsKey).map(x::get))
+				.toList();
+	}
+
+	@Override
+	public Instant resolveAssessmentStartTimeAsInstant(Object startTimeObj) {
+		if (startTimeObj instanceof Date date) {
+			return date.toInstant();
+		}
+		if (startTimeObj instanceof Instant instant) {
+			return instant;
+		}
+		if (startTimeObj instanceof String startTime) {
+			return Instant.parse(startTime);
+		}
+		return null;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public SBApiResponse readAssessmentResult(Map<String, Object> request, String userAuthToken,
+											  AccessTokenValidator accessTokenValidator) {
+		SBApiResponse response = createDefaultResponse(Constants.API_READ_ASSESSMENT_RESULT);
+		try {
+			String userId = accessTokenValidator.fetchUserIdFromAccessToken(userAuthToken);
+			if (StringUtils.isBlank(userId)) {
+				updateErrorDetails(response, Constants.USER_ID_DOESNT_EXIST, HttpStatus.INTERNAL_SERVER_ERROR);
+				return response;
+			}
+
+			String errMsg = validateAssessmentReadResult(request);
+			if (StringUtils.isNotBlank(errMsg)) {
+				updateErrorDetails(response, errMsg, HttpStatus.BAD_REQUEST);
+				return response;
+			}
+
+			Map<String, Object> requestBody = (Map<String, Object>) request.get(Constants.REQUEST);
+			String assessmentIdentifier = (String) requestBody.get(Constants.ASSESSMENT_ID_KEY);
+
+			List<Map<String, Object>> existingDataList = readUserSubmittedAssessmentRecords(
+					userId, assessmentIdentifier);
+
+			if (existingDataList.isEmpty()) {
+				updateErrorDetails(response, Constants.USER_ASSESSMENT_DATA_NOT_PRESENT, HttpStatus.BAD_REQUEST);
+				return response;
+			}
+
+			String statusOfLatestObject = (String) existingDataList.get(0).get(Constants.STATUS);
+			if (!Constants.SUBMITTED.equalsIgnoreCase(statusOfLatestObject)) {
+				response.getResult().put(Constants.STATUS_IS_IN_PROGRESS, true);
+				return response;
+			}
+
+			String latestResponse = (String) existingDataList.get(0).get(Constants.SUBMIT_ASSESSMENT_RESPONSE_KEY);
+			if (StringUtils.isNotBlank(latestResponse)) {
+				response.putAll(readJsonToMap(latestResponse));
+			}
+		} catch (Exception e) {
+			String errMsg = String.format("Failed to process Assessment read response. Excption: %s", e.getMessage());
+			updateErrorDetails(response, errMsg, HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+		return response;
 	}
 }
