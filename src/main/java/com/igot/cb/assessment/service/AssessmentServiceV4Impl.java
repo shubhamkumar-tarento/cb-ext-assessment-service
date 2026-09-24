@@ -674,15 +674,7 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
 
     private Map<String, Object> readAssessmentLevelData(Map<String, Object> assessmentAllDetail) {
-        List<String> assessmentParams = serverProperties.getAssessmentLevelParams();
-        Map<String, Object> assessmentFilteredDetail = new HashMap<>();
-        for (String assessmentParam : assessmentParams) {
-            if ((assessmentAllDetail.containsKey(assessmentParam))) {
-                assessmentFilteredDetail.put(assessmentParam, assessmentAllDetail.get(assessmentParam));
-            }
-        }
-        readSectionLevelParams(assessmentAllDetail, assessmentFilteredDetail);
-        return assessmentFilteredDetail;
+        return assessUtilServ.readAssessmentLevelData(assessmentAllDetail, this::readSectionLevelParams);
     }
 
     private void readSectionLevelParams(Map<String, Object> assessmentAllDetail,
@@ -794,48 +786,13 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
     public Map<String, Object> createResponseMapWithProperStructure(Map<String, Object> hierarchySection,
                                                                     Map<String, Object> resultMap) throws ApplicationLogicError {
-        Map<String, Object> sectionLevelResult = new HashMap<>();
-        sectionLevelResult.put(Constants.IDENTIFIER, hierarchySection.get(Constants.IDENTIFIER));
-        sectionLevelResult.put(Constants.OBJECT_TYPE, hierarchySection.get(Constants.OBJECT_TYPE));
-        sectionLevelResult.put(Constants.PRIMARY_CATEGORY, hierarchySection.get(Constants.PRIMARY_CATEGORY));
-        sectionLevelResult.put(Constants.PASS_PERCENTAGE, hierarchySection.get(Constants.MINIMUM_PASS_PERCENTAGE));
-        Double result;
-        if (!ObjectUtils.isEmpty(resultMap)) {
-            result = (Double) resultMap.get(Constants.RESULT);
-            sectionLevelResult.put(Constants.RESULT, result);
-            sectionLevelResult.put(Constants.TOTAL, resultMap.get(Constants.TOTAL));
-            sectionLevelResult.put(Constants.BLANK, resultMap.get(Constants.BLANK));
-            sectionLevelResult.put(Constants.CORRECT, resultMap.get(Constants.CORRECT));
-            sectionLevelResult.put(Constants.INCORRECT, resultMap.get(Constants.INCORRECT));
-            sectionLevelResult.put(Constants.CHILDREN,resultMap.get(Constants.CHILDREN));
-        } else {
-            result = 0.0;
-            sectionLevelResult.put(Constants.RESULT, result);
-            List<String> childNodes = (List<String>) hierarchySection.get(Constants.CHILDREN);
-            sectionLevelResult.put(Constants.TOTAL, childNodes.size());
-            sectionLevelResult.put(Constants.BLANK, childNodes.size());
-            sectionLevelResult.put(Constants.CORRECT, 0);
-            sectionLevelResult.put(Constants.INCORRECT, 0);
-        }
-        sectionLevelResult.put(Constants.PASS,
-                result >= ((Integer) hierarchySection.get(Constants.MINIMUM_PASS_PERCENTAGE)));
-        sectionLevelResult.put(Constants.OVERALL_RESULT, result);
-        return sectionLevelResult;
+        return assessUtilServ.createResponseMapWithProperStructure(hierarchySection, resultMap);
     }
 
     private Map<String, Object> calculateAssessmentFinalResults(Map<String, Object> assessmentLevelResult) throws ApplicationLogicError {
         Map<String, Object> res = new HashMap<>();
         try {
-            res.put(Constants.CHILDREN, Collections.singletonList(assessmentLevelResult));
-            Double result = (Double) assessmentLevelResult.get(Constants.RESULT);
-            res.put(Constants.OVERALL_RESULT, result);
-            res.put(Constants.TOTAL, assessmentLevelResult.get(Constants.TOTAL));
-            res.put(Constants.BLANK, assessmentLevelResult.get(Constants.BLANK));
-            res.put(Constants.CORRECT, assessmentLevelResult.get(Constants.CORRECT));
-            res.put(Constants.PASS_PERCENTAGE, assessmentLevelResult.get(Constants.PASS_PERCENTAGE));
-            res.put(Constants.INCORRECT, assessmentLevelResult.get(Constants.INCORRECT));
-            Integer minimumPassPercentage = (Integer) assessmentLevelResult.get(Constants.PASS_PERCENTAGE);
-            res.put(Constants.PASS, result >= minimumPassPercentage);
+            assessUtilServ.populateAssessmentFinalResults(assessmentLevelResult, res);
         } catch (Exception e) {
             logger.error("Failed to calculate Assessment final results. Exception: ", e);
         }
@@ -884,33 +841,8 @@ public class AssessmentServiceV4Impl implements AssessmentServiceV4 {
 
     private Map<String, Object> calculateSectionFinalResults(List<Map<String, Object>> sectionLevelResults) throws ApplicationLogicError {
         Map<String, Object> res = new HashMap<>();
-        Double result;
-        Integer correct = 0;
-        Integer blank = 0;
-        Integer inCorrect = 0;
-        Integer total = 0;
-        int pass = 0;
-        Double totalResult = 0.0;
         try {
-            for (Map<String, Object> sectionChildren : sectionLevelResults) {
-                res.put(Constants.CHILDREN, sectionLevelResults);
-                result = (Double) sectionChildren.get(Constants.RESULT);
-                totalResult += result;
-                total += (Integer) sectionChildren.get(Constants.TOTAL);
-                blank += (Integer) sectionChildren.get(Constants.BLANK);
-                correct += (Integer) sectionChildren.get(Constants.CORRECT);
-                inCorrect += (Integer) sectionChildren.get(Constants.INCORRECT);
-                Integer minimumPassPercentage = (Integer) sectionChildren.get(Constants.PASS_PERCENTAGE);
-                if (result >= minimumPassPercentage) {
-                    pass++;
-                }
-            }
-            res.put(Constants.OVERALL_RESULT, totalResult / sectionLevelResults.size());
-            res.put(Constants.TOTAL, total);
-            res.put(Constants.BLANK, blank);
-            res.put(Constants.CORRECT, correct);
-            res.put(Constants.INCORRECT, inCorrect);
-            res.put(Constants.PASS, (pass == sectionLevelResults.size()));
+            assessUtilServ.populateSectionFinalResults(sectionLevelResults, res);
         } catch (Exception e) {
             logger.error("Failed to calculate assessment score. Exception: ", e);
         }

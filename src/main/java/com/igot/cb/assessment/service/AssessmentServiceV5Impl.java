@@ -584,15 +584,7 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
     }
 
     private Map<String, Object> readAssessmentLevelData(Map<String, Object> assessmentAllDetail) {
-        List<String> assessmentParams = serverProperties.getAssessmentLevelParams();
-        Map<String, Object> assessmentFilteredDetail = new HashMap<>();
-        for (String assessmentParam : assessmentParams) {
-            if ((assessmentAllDetail.containsKey(assessmentParam))) {
-                assessmentFilteredDetail.put(assessmentParam, assessmentAllDetail.get(assessmentParam));
-            }
-        }
-        readSectionLevelParams(assessmentAllDetail, assessmentFilteredDetail);
-        return assessmentFilteredDetail;
+        return assessUtilServ.readAssessmentLevelData(assessmentAllDetail, this::readSectionLevelParams);
     }
 
     private void readSectionLevelParams(Map<String, Object> assessmentAllDetail,
@@ -740,17 +732,7 @@ public class AssessmentServiceV5Impl implements AssessmentServiceV5 {
     private Map<String, Object> calculateAssessmentFinalResults(Map<String, Object> assessmentLevelResult) throws ApplicationLogicError {
         Map<String, Object> res = new HashMap<>();
         try {
-            res.put(Constants.CHILDREN, Collections.singletonList(assessmentLevelResult));
-            Double result = (Double) assessmentLevelResult.get(Constants.RESULT);
-            res.put(Constants.OVERALL_RESULT, result);
-            res.put(Constants.TOTAL, assessmentLevelResult.get(Constants.TOTAL));
-            res.put(Constants.BLANK, assessmentLevelResult.get(Constants.BLANK));
-            res.put(Constants.CORRECT, assessmentLevelResult.get(Constants.CORRECT));
-            res.put(Constants.PASS_PERCENTAGE, assessmentLevelResult.get(Constants.PASS_PERCENTAGE));
-            res.put(Constants.INCORRECT, assessmentLevelResult.get(Constants.INCORRECT));
-            res.put(Constants.NAME, assessmentLevelResult.get(Constants.NAME));
-            Integer minimumPassPercentage = (Integer) assessmentLevelResult.get(Constants.PASS_PERCENTAGE);
-            res.put(Constants.PASS, result >= minimumPassPercentage);
+            assessUtilServ.populateAssessmentFinalResults(assessmentLevelResult, res);
         } catch (Exception e) {
             logger.error("Failed to calculate Assessment final results. Exception: ", e);
         }

@@ -134,6 +134,12 @@ class AssessmentServiceV5ImplTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        lenient().when(assessUtilServ.readAssessmentLevelData(any(), any()))
+                .thenAnswer(inv -> realUtil.readAssessmentLevelData(inv.getArgument(0), inv.getArgument(1)));
+        lenient().doAnswer(inv -> {
+            realUtil.populateAssessmentFinalResults(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(assessUtilServ).populateAssessmentFinalResults(any(), any());
     }
 
 
@@ -1340,7 +1346,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testReadAssessmentResultV5_FullCoverage() throws Exception {
+    void testReadAssessmentResultV5_FullCoverage() {
         String token = "validToken";
         String userId = "user123";
         String assessmentId = "assess123";
@@ -2021,7 +2027,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testValidateAssessmentReadResult_MissingAssessmentId() throws Exception {
+    void testValidateAssessmentReadResult_MissingAssessmentId() {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, "course123");
 
@@ -2034,7 +2040,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testValidateAssessmentReadResult_AllFieldsPresent() throws Exception {
+    void testValidateAssessmentReadResult_AllFieldsPresent() {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.ASSESSMENT_ID_KEY, "assess123");
         requestBody.put(Constants.BATCH_ID, "batch456");
@@ -2242,7 +2248,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetShuffleFlagFromHierarchy_ShuffleTrueForMatchingSection() throws Exception {
+    void testGetShuffleFlagFromHierarchy_ShuffleTrueForMatchingSection() {
         Map<String, Object> hierarchy = new HashMap<>();
         hierarchy.put(Constants.SHUFFLE, true);
         hierarchy.put(Constants.CHILDREN, List.of(
@@ -2253,7 +2259,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetShuffleFlagFromHierarchy_ShuffleFalseForMatchingSection() throws Exception {
+    void testGetShuffleFlagFromHierarchy_ShuffleFalseForMatchingSection() {
         Map<String, Object> hierarchy = new HashMap<>();
         hierarchy.put(Constants.SHUFFLE, false);
         hierarchy.put(Constants.CHILDREN, List.of(
@@ -2264,7 +2270,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetShuffleFlagFromHierarchy_EmptySections_ReturnsTrue() throws Exception {
+    void testGetShuffleFlagFromHierarchy_EmptySections_ReturnsTrue() {
         Map<String, Object> hierarchy = new HashMap<>();
         hierarchy.put(Constants.CHILDREN, Collections.emptyList());
         boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
@@ -2272,7 +2278,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetShuffleFlagFromHierarchy_NoMatchingSection_ReturnsTrue() throws Exception {
+    void testGetShuffleFlagFromHierarchy_NoMatchingSection_ReturnsTrue() {
         Map<String, Object> hierarchy = new HashMap<>();
         hierarchy.put(Constants.CHILDREN, List.of(
                 Map.of(Constants.IDENTIFIER, "q1")
@@ -2282,7 +2288,7 @@ class AssessmentServiceV5ImplTest {
     }
 
     @Test
-    void testGetShuffleFlagFromHierarchy_NullChildren_ReturnsTrue() throws Exception {
+    void testGetShuffleFlagFromHierarchy_NullChildren_ReturnsTrue() {
         Map<String, Object> hierarchy = new HashMap<>();
         boolean result = assessUtilServ.getShuffleFlagFromHierarchy(hierarchy);
         assertTrue(result);

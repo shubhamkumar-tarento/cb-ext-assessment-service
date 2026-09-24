@@ -66,6 +66,20 @@ class AssessmentServiceV2ImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        AssessmentUtilServiceV2Impl realUtil = new AssessmentUtilServiceV2Impl(serverProperties,
+                outboundRequestHandlerService, mapper, null, redisCacheMgr, null, producer);
+        lenient().when(assessUtilServ.readAssessmentLevelData(any(), any()))
+                .thenAnswer(inv -> realUtil.readAssessmentLevelData(inv.getArgument(0), inv.getArgument(1)));
+        lenient().doAnswer(inv -> {
+            realUtil.populateAssessmentFinalResults(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(assessUtilServ).populateAssessmentFinalResults(any(), any());
+        lenient().doAnswer(inv -> {
+            realUtil.populateSectionFinalResults(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(assessUtilServ).populateSectionFinalResults(any(), any());
+        lenient().when(assessUtilServ.createResponseMapWithProperStructure(any(), any()))
+                .thenAnswer(inv -> realUtil.createResponseMapWithProperStructure(inv.getArgument(0), inv.getArgument(1)));
     }
 
     // +ve: readAssessment returns success

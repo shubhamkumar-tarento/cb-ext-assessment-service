@@ -507,8 +507,7 @@ public class Base64Util {
                 case 0:
                     // Output length is a multiple of three.  Fine.
                     break;
-                case 1:
-                case 4:
+                case 1, 4:
                     // Read one extra input byte (case 1), or one padding '='
                     // when we expected 2 (case 4).  Both illegal.
                     this.state = 6;

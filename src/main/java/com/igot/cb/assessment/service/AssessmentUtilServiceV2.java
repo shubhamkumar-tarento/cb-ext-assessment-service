@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 public interface AssessmentUtilServiceV2 {
 	public Map<String, Object> validateQumlAssessment(List<String> originalQuestionList,
@@ -247,4 +248,32 @@ public interface AssessmentUtilServiceV2 {
 	 */
 	SBApiResponse readAssessmentResult(Map<String, Object> request, String userAuthToken,
 									   AccessTokenValidator accessTokenValidator);
+
+	/**
+	 * Builds the assessment-level filtered detail map shared by the read-assessment flows of V2,
+	 * V4 and V5. Section-level resolution differs per API version, so the caller supplies its own
+	 * {@code readSectionLevelParams} as {@code sectionLevelParamsResolver}.
+	 */
+	Map<String, Object> readAssessmentLevelData(Map<String, Object> assessmentAllDetail,
+			BiConsumer<Map<String, Object>, Map<String, Object>> sectionLevelParamsResolver);
+
+	/**
+	 * Populates {@code res} with the assessment-level final result fields, common to V2 and V4.
+	 * Mutates {@code res} in place so a partially built map is preserved if the caller's own
+	 * catch block needs to return it after a mid-build failure.
+	 */
+	void populateAssessmentFinalResults(Map<String, Object> assessmentLevelResult, Map<String, Object> res);
+
+	/**
+	 * Populates {@code res} with the section-level final result fields, common to V2 and V4.
+	 * Mutates {@code res} in place so a partially built map is preserved if the caller's own
+	 * catch block needs to return it after a mid-build failure.
+	 */
+	void populateSectionFinalResults(List<Map<String, Object>> sectionLevelResults, Map<String, Object> res);
+
+	/**
+	 * Builds the section-level result map for a scored section, common to V2 and V4.
+	 */
+	Map<String, Object> createResponseMapWithProperStructure(Map<String, Object> hierarchySection,
+			Map<String, Object> resultMap);
 }
