@@ -1,6 +1,8 @@
 package com.igot.cb.common.util;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.InvocationTargetException;
@@ -80,46 +82,28 @@ class Base64UtilTest {
         }
     }
 
-    @Test
-    void testEncodeLengthMod3Equals0() {
-        byte[] data = new byte[3]; // len % 3 == 0
+    @ParameterizedTest(name = "encode byte[{0}] (len % 3 == {1})")
+    @CsvSource({
+            "3, 0",
+            "4, 1",
+            "5, 2"
+    })
+    void testEncodeLengthMod3(int dataLength, int expectedMod) {
+        assertEquals(expectedMod, dataLength % 3);
+        byte[] data = new byte[dataLength];
         String encoded = Base64Util.encodeToString(data, Base64Util.NO_PADDING);
         assertNotNull(encoded);
     }
 
-    @Test
-    void testEncodeLengthMod3Equals1() {
-        byte[] data = new byte[4]; // len % 3 == 1
-        String encoded = Base64Util.encodeToString(data, Base64Util.NO_PADDING);
-        assertNotNull(encoded);
-    }
-
-    @Test
-    void testEncodeLengthMod3Equals2() {
-        byte[] data = new byte[5]; // len % 3 == 2
-        String encoded = Base64Util.encodeToString(data, Base64Util.NO_PADDING);
-        assertNotNull(encoded);
-    }
-
-    @Test
-    void testDecoderPartialInputValidPadding() {
-        String encoded = "TQ=="; // 'M' (one character)
+    @ParameterizedTest(name = "decode \"{0}\" -> \"{1}\"")
+    @CsvSource({
+            "TQ==, M",
+            "TWE=, Ma",
+            "TWFu, Man"
+    })
+    void testDecoderPadding(String encoded, String expected) {
         byte[] decoded = Base64Util.decode(encoded, Base64Util.DEFAULT);
-        assertEquals("M", new String(decoded));
-    }
-
-    @Test
-    void testDecoderTwoBytesPadding() {
-        String encoded = "TWE="; // 'Ma'
-        byte[] decoded = Base64Util.decode(encoded, Base64Util.DEFAULT);
-        assertEquals("Ma", new String(decoded));
-    }
-
-    @Test
-    void testDecoderFullInput() {
-        String encoded = "TWFu"; // 'Man'
-        byte[] decoded = Base64Util.decode(encoded, Base64Util.DEFAULT);
-        assertEquals("Man", new String(decoded));
+        assertEquals(expected, new String(decoded));
     }
 
     @Test
