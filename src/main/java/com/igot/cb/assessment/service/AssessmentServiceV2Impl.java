@@ -262,6 +262,12 @@ public class AssessmentServiceV2Impl implements AssessmentServiceV2 {
             List<Object> questionList) throws IOException {
         List<String> newIdentifierList = new ArrayList<>();
         List<String> map = redisCacheMgr.mget(identifierList);
+        if (map == null) {
+            // Redis lookup failed - fall back to fetching every question from the source
+            // instead of silently treating them all as already cached.
+            newIdentifierList.addAll(identifierList);
+            return newIdentifierList;
+        }
         for (int i = 0; i < map.size(); i++) {
             if (ObjectUtils.isEmpty(map.get(i))) {
                 newIdentifierList.add(identifierList.get(i));

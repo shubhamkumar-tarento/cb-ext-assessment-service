@@ -300,8 +300,7 @@ class RedisCacheMgrTest {
     void testMget_Exception() {
         when(jedis.mget(any(String[].class))).thenThrow(new RuntimeException("fail"));
         List<String> result = redisCacheMgr.mget(List.of("1", "2"));
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
+        assertNull(result);
     }
 
     @Test

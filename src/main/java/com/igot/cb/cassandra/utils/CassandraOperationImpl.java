@@ -170,6 +170,7 @@ public class CassandraOperationImpl implements CassandraOperation {
 			response.put(Constants.RESPONSE, Constants.SUCCESS);
 		} catch (Exception e) {
 			String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
+			logger.error(errMsg, e);
 			response.put(Constants.RESPONSE, Constants.FAILED);
 			response.put(Constants.ERROR_MESSAGE, errMsg);
 			throw new ApplicationLogicError(errMsg, e);

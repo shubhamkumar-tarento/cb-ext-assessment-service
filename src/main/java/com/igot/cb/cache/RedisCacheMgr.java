@@ -120,6 +120,9 @@ public class RedisCacheMgr {
         }
     }
 
+    // null is returned (instead of an empty list) on failure so callers can tell a Redis outage
+    // apart from a genuine cache miss and fall back to fetching from the source of truth.
+    @SuppressWarnings("java:S1168")
     public List<String> mget(List<String> fields) {
         try (Jedis jedis = jedisPool.getResource()) {
         	String[] updatedKeys = new String[fields.size()];
@@ -130,7 +133,7 @@ public class RedisCacheMgr {
         } catch (Exception e) {
             logger.error("Error while getting all data from Redis cache: ", e);
         }
-        return Collections.emptyList();
+        return null;
     }
 
     public Set<String> getAllKeyNames() {
